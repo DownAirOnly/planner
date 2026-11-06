@@ -42,8 +42,8 @@ function parseTimeRange(text){
  let a=m[3]?m[3].toUpperCase():"",b=m[6]?m[6].toUpperCase():"";
  const normalizeSuffix=x=>x==="A"?"AM":x==="P"?"PM":x;
  a=normalizeSuffix(a);b=normalizeSuffix(b);
- if(!a&&b)a=b; // A missing suffix is a common compact notation; user reviews before saving.
- if(!b&&a)b=a;
+ // Missing AM/PM is ambiguous (8:00 - 4:00 PM could mean 8 AM - 4 PM).
+ // Do not create a misleading event without a clear time range.
  if(!a||!b)return null;
  const conv=(hour,min,suffix)=>{
   let h=+hour,minute=+min;
