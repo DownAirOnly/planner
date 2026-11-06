@@ -1,0 +1,287 @@
+(function(){
+"use strict";
+const DAYS=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const DOMAINS={work:{label:"Work",color:"work"},school:{label:"School",color:"school"},personal:{label:"Personal",color:"personal"}};
+const esc=(v)=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ic=(name,extra="")=>'<svg class="icon '+extra+'" aria-hidden="true"><use href="./icons.svg#'+name+'"></use></svg>';
+const pad=n=>String(n).padStart(2,"0");
+const localDate=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const fromDate=s=>{const m=/^(\d{4})-(\d\d)-(\d\d)$/.exec(s||"");if(!m)return null;const d=new Date(+m[1],+m[2]-1,+m[3]);return d.getFullYear()===+m[1]&&d.getMonth()===+m[2]-1&&d.getDate()===+m[3]?d:null;};
+const shiftDate=(d,num)=>{const x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()+num);return x;};
+const labelDate=s=>{const d=fromDate(s);return d?d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}):s;};
+const fullDate=s=>{const d=fromDate(s);return d?d.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric",year:"numeric"}):s;};
+const clock=t=>{if(!t)return"";const bits=t.split(":");let h=+bits[0];return (h%12||12)+":"+bits[1]+" "+(h>=12?"PM":"AM");};
+const uid=()=>crypto&&crypto.randomUUID?crypto.randomUUID():"event-"+Date.now()+"-"+Math.floor(Math.random()*99999);
+const fmtTime=e=>e.allDay?"All day":[clock(e.startTime),clock(e.endTime)].filter(Boolean).join("–");
+const keyDate=d=>d.getDay();
+function visibleOnDate(e,iso){
+ if(!e||!iso||!e.date||iso<e.date)return false;
+ if(e.repeat==="weekly"){
+   if(e.until&&iso>e.until)return false;
+   const d=fromDate(iso);return !!d&&Array.isArray(e.weekdays)&&e.weekdays.includes(d.getDay());
+ }
+ return e.date===iso;
+}
+function parseIso(value){
+ const d=fromDate(value);return d?localDate(d):"";
+}
+function parseDateLoose(raw,year){
+ const s=String(raw).replace(/[|]/g," ");
+ let m=s.match(/\b(20\d{2})[-\/](\d{1,2})[-\/](\d{1,2})\b/);
+ if(m){const d=new Date(+m[1],+m[2]-1,+m[3]);if(d.getFullYear()===+m[1]&&d.getMonth()===+m[2]-1&&d.getDate()===+m[3])return {iso:localDate(d),matched:m[0]};}
+ m=s.match(/\b(\d{1,2})[\/.-](\d{1,2})(?:[\/.-](\d{2,4}))?\b/);
+ if(m){let y=m[3]?+m[3]:year;if(y<100)y+=2000;const d=new Date(y,+m[1]-1,+m[2]);if(d.getFullYear()===y&&d.getMonth()===+m[1]-1&&d.getDate()===+m[2])return{iso:localDate(d),matched:m[0]};}
+ m=s.match(/\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(20\d{2}))?\b/i);
+ if(m){const names=["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];const month=names.findIndex(x=>m[1].toLowerCase().startsWith(x));const y=m[3]?+m[3]:year;const d=new Date(y,month,+m[2]);if(month>=0&&d.getFullYear()===y&&d.getMonth()===month&&d.getDate()===+m[2])return{iso:localDate(d),matched:m[0]};}
+ return null;
+}
+function parseTimeRange(text){
+ const s=String(text).replace(/[\u2013\u2014\u2212]/g,"-").replace(/\bto\b/gi,"-");
+ const pattern=/\b(\d{1,2})(?::(\d{2}))\s*(AM|PM|A|P)?\s*-\s*(\d{1,2})(?::(\d{2}))\s*(AM|PM|A|P)?\b/i;
+ const m=s.match(pattern);if(!m)return null;
+ let a=m[3]?m[3].toUpperCase():"",b=m[6]?m[6].toUpperCase():"";
+ const normalizeSuffix=x=>x==="A"?"AM":x==="P"?"PM":x;
+ a=normalizeSuffix(a);b=normalizeSuffix(b);
+ if(!a&&b)a=b; // A missing suffix is a common compact notation; user reviews before saving.
+ if(!b&&a)b=a;
+ if(!a||!b)return null;
+ const conv=(hour,min,suffix)=>{
+  let h=+hour,minute=+min;
+  if(h<1||h>12||minute>59)return null;
+  return pad((h%12)+(suffix==="PM"?12:0))+":"+pad(minute);
+ };
+ const start=conv(m[1],m[2],a),end=conv(m[4],m[5],b);
+ return start&&end?{startTime:start,endTime:end,matched:m[0]}:null;
+}
+function parseImportedText(raw,domain,defaultYear){
+ const lines=String(raw).split(/\r?\n/).map(s=>s.trim()).filter(Boolean).slice(0,250);
+ const out=[];const seen=new Set();
+ for(let i=0;i<lines.length;i++){
+   const dateMatch=parseDateLoose(lines[i],defaultYear);
+   if(!dateMatch)continue;
+   let line=lines[i];let times=parseTimeRange(line);
+   if(!times && i+1<lines.length && !parseDateLoose(lines[i+1],defaultYear)){times=parseTimeRange(lines[i+1]);if(times)line+=" "+lines[i+1];}
+   if(!times&&i+2<lines.length && !parseDateLoose(lines[i+1],defaultYear)&&!parseDateLoose(lines[i+2],defaultYear)){times=parseTimeRange(lines[i+1]+" "+lines[i+2]);if(times)line+=" "+lines[i+1]+" "+lines[i+2];}
+   if(!times)continue;
+   const identifier=dateMatch.iso+"|"+times.startTime+"|"+times.endTime;
+   if(seen.has(identifier))continue;seen.add(identifier);
+   const fragment=line.replace(dateMatch.matched,"").replace(times.matched,"").replace(/\b(Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)(day)?\b/gi,"").replace(/[|•]+/g," ").trim().replace(/^[-,: ]+|[-,: ]+$/g,"").slice(0,90);
+   out.push({id:uid(),domain,title:domain==="work"?"Work shift":domain==="school"?"Class":"Event",date:dateMatch.iso,startTime:times.startTime,endTime:times.endTime,allDay:false,location:"",notes:fragment||"",repeat:"none",weekdays:[],until:""});
+ }
+ return out.slice(0,100);
+}
+function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}){
+ const ui={domain:"work",mode:"week",selected:localDate(new Date()),workingImport:null};
+ const events=()=>getEvents()||[];
+ const filter=e=>ui.domain==="all"||e.domain===ui.domain;
+ const selectedEvents=(iso)=>events().filter(e=>filter(e)&&visibleOnDate(e,iso)).sort((a,b)=>(a.allDay?"":a.startTime).localeCompare(b.allDay?"":b.startTime));
+ const dateEvents=(iso,domain)=>events().filter(e=>(!domain||e.domain===domain)&&visibleOnDate(e,iso)).sort((a,b)=>a.startTime.localeCompare(b.startTime));
+ function nextEvent(domain){
+   const now=new Date(),day0=localDate(now);
+   for(let i=0;i<365;i++){const day=localDate(shiftDate(now,i));const possible=dateEvents(day,domain).filter(e=>i!==0||e.allDay||!e.endTime||(day+"T"+e.endTime)>=day0+"T"+pad(now.getHours())+":"+pad(now.getMinutes()));if(possible.length)return{...possible[0],occurrenceDate:day};}
+   return null;
+ }
+ function homeSummary(){
+   const domains=["work","school"];
+   return '<section class="section"><div class="section-head"><h2>Schedule</h2><button class="subtle-link" data-action="schedule-jump" data-domain="work">Calendar '+ic("arrow","tiny")+'</button></div><div class="schedule-home-grid">'+domains.map(domain=>{
+    const next=nextEvent(domain),heading=domain==="work"?"Next shift":"Next class";
+    return '<button class="schedule-home-item" data-action="schedule-jump" data-domain="'+domain+'"><span class="schedule-tag '+domain+'">'+(domain==="work"?"Work":"School")+'</span><span class="schedule-home-heading">'+heading+'</span><span class="schedule-home-primary">'+(next?esc(labelDate(next.occurrenceDate)):"Nothing scheduled")+'</span><span class="schedule-home-secondary">'+(next?esc(fmtTime(next)+(next.location?" · "+next.location:"")):(domain==="work"?"Add your work schedule":"Add your class schedule"))+'</span></button>';
+   }).join("")+'</div></section>';
+ }
+ const heading=()=>{
+   const date=fromDate(ui.selected),format=ui.mode==="month"?{month:"long",year:"numeric"}:ui.mode==="week"?{month:"short",year:"numeric"}:{weekday:"long",month:"long",day:"numeric"};
+   return date.toLocaleDateString(undefined,format);
+ };
+ function daysForView(){
+   const selected=fromDate(ui.selected);
+   if(ui.mode==="day")return[selected];
+   if(ui.mode==="week"){
+     const start=shiftDate(selected,-((selected.getDay()+6)%7));
+     return Array.from({length:7},(_,i)=>shiftDate(start,i));
+   }
+   const first=new Date(selected.getFullYear(),selected.getMonth(),1);
+   const start=shiftDate(first,-((first.getDay()+6)%7));
+   const last=new Date(selected.getFullYear(),selected.getMonth()+1,0);
+   const total=Math.ceil((((last.getDate()+((first.getDay()+6)%7))/7)))*7;
+   return Array.from({length:total},(_,i)=>shiftDate(start,i));
+ }
+ function calendar(){
+  const days=daysForView();
+  let grid="";
+  if(ui.mode!=="day"){
+    grid='<div class="schedule-cal-head">'+["M","T","W","T","F","S","S"].map(v=>'<span>'+v+'</span>').join("")+'</div><div class="schedule-cal-grid '+ui.mode+'">'+days.map(d=>{
+       const iso=localDate(d),matches=selectedEvents(iso),active=iso===ui.selected,other=d.getMonth()!==fromDate(ui.selected).getMonth();
+       let dots="";
+       if(matches.length)dots='<span class="schedule-dots">'+[...new Set(matches.map(e=>e.domain))].slice(0,3).map(domain=>'<i class="'+domain+'"></i>').join("")+'</span>';
+       return '<button class="schedule-date '+(active?"selected ":"")+(other&&ui.mode==="month"?"outside":"")+'" data-action="schedule-select" data-date="'+iso+'" aria-label="'+esc(fullDate(iso))+', '+matches.length+' events"><span>'+d.getDate()+'</span>'+dots+'</button>';
+    }).join("")+'</div>';
+  }
+  return '<div class="schedule-calendar"><div class="schedule-calendar-top"><button class="icon-button" data-action="schedule-prev" aria-label="Previous '+ui.mode+'">'+ic("chevron-left")+'</button><strong>'+esc(heading())+'</strong><div class="schedule-calendar-controls"><button class="today-button" data-action="schedule-today">Today</button><button class="icon-button" data-action="schedule-next" aria-label="Next '+ui.mode+'">'+ic("chevron-right")+'</button></div></div>'+grid+'</div>';
+ }
+ function eventRows(){
+  const selected=selectedEvents(ui.selected);
+  return '<section class="section schedule-agenda"><div class="section-head"><h2>'+esc(fullDate(ui.selected))+'</h2><span class="muted">'+selected.length+' event'+(selected.length===1?"":"s")+'</span></div>'+
+   (selected.length?'<div class="schedule-event-list">'+selected.map(e=>'<button class="schedule-event '+e.domain+'" data-action="schedule-edit" data-id="'+esc(e.id)+'"><span class="schedule-event-line"></span><span class="schedule-event-body"><span class="schedule-event-title">'+esc(e.title)+'</span><span class="schedule-event-time">'+esc(fmtTime(e)+(e.location?" · "+e.location:""))+'</span></span>'+ic("chevron-right")+'</button>').join("")+'</div>':
+   '<div class="empty"><strong>No '+(ui.domain==="all"?"events":DOMAINS[ui.domain].label.toLowerCase()+" events")+' scheduled</strong><p>Add an event or import a schedule.</p></div>')+'</section>';
+ }
+ function render(){
+  return '<div class="page-heading"><div><p class="eyebrow">Calendar</p><h1 class="page-title">Schedule</h1></div><div class="action-row"><button class="button secondary" data-action="schedule-import">'+ic("upload")+' Import</button><button class="button" data-action="schedule-add">'+ic("plus")+' Add</button></div></div>'+
+   '<div class="schedule-domain-picker" role="group" aria-label="Calendar category">'+["work","school","personal","all"].map(d=>'<button data-action="schedule-domain" data-domain="'+d+'" class="'+(ui.domain===d?"active":"")+'">'+(d==="all"?"All":DOMAINS[d].label)+'</button>').join("")+'</div>'+
+   '<div class="schedule-view-bar"><span class="small-label">'+(ui.domain==="all"?"All calendars":DOMAINS[ui.domain].label+" calendar")+'</span><div class="schedule-view-picker">'+["day","week","month"].map(mode=>'<button data-action="schedule-mode" data-mode="'+mode+'" class="'+(ui.mode===mode?"active":"")+'">'+mode[0].toUpperCase()+mode.slice(1)+'</button>').join("")+'</div></div>'+
+   calendar()+eventRows()+
+   (ui.domain==="school"?'<p class="schedule-hint">For classes that meet on the same weekdays, choose “Repeat weekly” when adding an event.</p>':"");
+ }
+ function eventForm(item={}){
+  const domain=item.domain|| (ui.domain==="all"?"personal":ui.domain);
+  const date=item.date||ui.selected;
+  const val=(x)=>esc(item[x]??"");
+  const title=item.id?"Edit event":"New event";
+  showSheet('<div class="sheet-head"><h2 class="sheet-title">'+title+'</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+ic("x")+'</button></div>'+
+   '<form id="schedule-event-form" data-id="'+val("id")+'"><div class="field"><label for="ev-title">Title</label><input id="ev-title" required name="title" value="'+val("title")+'" placeholder="Work shift, Biology lab, appointment"></div>'+
+   '<div class="form-grid"><div class="field"><label for="ev-domain">Calendar</label><select id="ev-domain" name="domain">'+Object.keys(DOMAINS).map(d=>'<option value="'+d+'" '+(domain===d?"selected":"")+'>'+DOMAINS[d].label+'</option>').join("")+'</select></div><div class="field"><label for="ev-date">Date</label><input id="ev-date" type="date" required name="date" value="'+esc(date)+'"></div></div>'+
+   '<div class="form-grid"><div class="field"><label for="ev-start">Start</label><input id="ev-start" type="time" name="startTime" value="'+val("startTime")+'"></div><div class="field"><label for="ev-end">End</label><input id="ev-end" type="time" name="endTime" value="'+val("endTime")+'"></div></div>'+
+   '<div class="field"><label class="checkbox-label"><input type="checkbox" name="allDay" '+(item.allDay?"checked":"")+'> All day (no times)</label></div>'+
+   '<div class="field"><label for="ev-location">Location (optional)</label><input id="ev-location" name="location" value="'+val("location")+'"></div>'+
+   '<div class="field"><label for="ev-notes">Notes (optional)</label><textarea id="ev-notes" name="notes" rows="2">'+esc(item.notes||"")+'</textarea></div>'+
+   '<div class="field"><label for="ev-repeat">Repeat</label><select id="ev-repeat" name="repeat"><option value="none" '+(item.repeat!=="weekly"?"selected":"")+'>Does not repeat</option><option value="weekly" '+(item.repeat==="weekly"?"selected":"")+'>Every week</option></select></div>'+
+   '<div class="schedule-repeat-options" id="schedule-repeat-options" '+(item.repeat==="weekly"?"":"hidden")+'><div class="field"><label>On these days</label><div class="weekday-row">'+DAYS.map((d,i)=>'<label class="weekday-check"><input type="checkbox" name="weekday" value="'+i+'" '+((item.weekdays||[fromDate(date)?.getDay()]).includes(i)?"checked":"")+'><span>'+d+'</span></label>').join("")+'</div></div>'+
+   '<div class="field"><label for="ev-until">Repeat until (optional)</label><input id="ev-until" type="date" name="until" value="'+val("until")+'"></div><p class="schedule-hint">Editing or deleting a repeating event changes the whole series.</p></div>'+
+   '<div class="sheet-actions">'+(item.id?'<button type="button" class="button danger" data-action="schedule-delete" data-id="'+val("id")+'">'+ic("trash")+' Delete</button>':'<span></span>')+'<button class="button" type="submit">'+ic("check")+' Save</button></div></form>');
+ }
+ function importForm(){
+  const domain=ui.domain==="all"?"work":ui.domain;
+  ui.workingImport={domain,rows:[],raw:""};
+  showSheet('<div class="sheet-head"><h2 class="sheet-title">Import a schedule</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+ic("x")+'</button></div>'+
+   '<div class="field"><label for="import-domain">Import into</label><select id="import-domain">'+Object.keys(DOMAINS).map(d=>'<option value="'+d+'" '+(domain===d?"selected":"")+'>'+DOMAINS[d].label+'</option>').join("")+'</select></div>'+
+   '<div class="schedule-import-note">Choose screenshots or paste text copied with iPhone Live Text. Images are read on your device; they are not saved or uploaded to Command. The OCR library requires internet when first loaded.</div>'+
+   '<div class="field"><label for="schedule-image-input">Screenshots (PNG, JPG, HEIC if supported)</label><input type="file" id="schedule-image-input" accept="image/*" multiple></div>'+
+   '<button class="button secondary" type="button" data-action="schedule-ocr">'+ic("upload")+' Read screenshot text</button>'+
+   '<p id="schedule-ocr-status" class="schedule-hint" role="status"></p>'+
+   '<div class="field" style="margin-top:16px"><label for="schedule-raw-text">Schedule text (editable)</label><textarea id="schedule-raw-text" rows="7" placeholder="Tue 11/10 8:00 AM - 4:00 PM&#10;Wed 11/11 9:00 AM - 5:00 PM"></textarea></div>'+
+   '<button class="button" type="button" data-action="schedule-parse">Find dates & times</button>'+
+   '<div id="schedule-import-results" class="schedule-import-results"></div>');
+ }
+ function importPreview(){
+  const draft=ui.workingImport;if(!draft)return;
+  const found=draft.rows;
+  const target=document.querySelector("#schedule-import-results");if(!target)return;
+  if(!found.length){target.innerHTML='<div class="schedule-import-note" style="margin-top:12px">No clear date-and-time pairs found. Check the extracted text, or add events manually. Example: <strong>Tue 11/10 8:00 AM - 4:00 PM</strong>.</div>';return;}
+  const existing=new Set(events().map(e=>[e.domain,e.date,e.startTime,e.endTime].join("|")));
+  target.innerHTML='<div class="section-head" style="margin-top:18px"><h2>Review '+found.length+' event'+(found.length===1?"":"s")+'</h2><span class="muted">Edit before saving</span></div>'+
+   '<form id="schedule-import-form"><div class="schedule-import-preview">'+found.map((row,i)=>{
+    const dup=existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
+    return '<div class="schedule-import-row"><label class="checkbox-label"><input type="checkbox" name="include-'+i+'" '+(dup?"":"checked")+'><strong>Event '+(i+1)+'</strong>'+(dup?' <span class="chip waiting">Possible duplicate</span>':"")+'</label>'+
+     '<div class="field"><label>Title</label><input name="title-'+i+'" required value="'+esc(row.title)+'"></div>'+
+     '<div class="form-grid"><div class="field"><label>Date</label><input type="date" name="date-'+i+'" required value="'+esc(row.date)+'"></div><div class="field"><label>Start</label><input type="time" name="start-'+i+'" required value="'+esc(row.startTime)+'"></div></div>'+
+     '<div class="form-grid"><div class="field"><label>End</label><input type="time" name="end-'+i+'" required value="'+esc(row.endTime)+'"></div><div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div></div>'+
+     '<div class="field"><label>Notes</label><input name="notes-'+i+'" value="'+esc(row.notes)+'"></div></div>';
+   }).join("")+'</div><button class="button" type="submit">'+ic("check")+' Save selected events</button></form>';
+ }
+ function loadTesseract(){
+  if(window.Tesseract&&typeof window.Tesseract.createWorker==="function")return Promise.resolve();
+  if(window.__commandOcrPromise)return window.__commandOcrPromise;
+  window.__commandOcrPromise=new Promise((resolve,reject)=>{
+   const script=document.createElement("script");
+   script.src="https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js";
+   script.crossOrigin="anonymous";
+   script.onload=()=>window.Tesseract?.createWorker?resolve():reject(new Error("OCR library did not initialize"));
+   script.onerror=()=>reject(new Error("Could not load OCR. Try copying text from Photos instead."));
+   document.head.appendChild(script);
+  }).catch(err=>{window.__commandOcrPromise=null;throw err;});
+  return window.__commandOcrPromise;
+ }
+ async function readScreenshots(){
+  const input=document.querySelector("#schedule-image-input"),status=document.querySelector("#schedule-ocr-status"),raw=document.querySelector("#schedule-raw-text");
+  const files=Array.from(input?.files||[]).filter(f=>f.type.startsWith("image/")).slice(0,5);
+  if(!files.length){toast("Choose a screenshot first");return;}
+  if(!status||!raw)return;
+  const button=document.querySelector('[data-action="schedule-ocr"]');
+  if(button)button.disabled=true;
+  let worker;
+  try{
+   status.textContent="Loading text reader…";await loadTesseract();
+   worker=await window.Tesseract.createWorker("eng");
+   const texts=[];
+   for(let i=0;i<files.length;i++){
+    status.textContent="Reading screenshot "+(i+1)+" of "+files.length+"…";
+    const result=await worker.recognize(files[i]);
+    texts.push(result.data?.text||"");
+   }
+   raw.value=[raw.value.trim(),...texts.map(t=>t.trim())].filter(Boolean).join("\n");
+   status.textContent="Text extracted. Check the text below, then choose “Find dates & times.”";
+  }catch(err){status.textContent=err.message||"Could not read the image. Try Live Text in Photos.";}
+  finally{if(worker)try{await worker.terminate();}catch(e){} if(button)button.disabled=false;if(input)input.value="";}
+ }
+ function handleAction(b){
+  const action=b.dataset.action;
+  if(action==="schedule-jump"){ui.domain=b.dataset.domain||"work";openSchedule();return true;}
+  if(!action.startsWith("schedule-"))return false;
+  if(action==="schedule-domain"){ui.domain=b.dataset.domain;openSchedule(false);}
+  if(action==="schedule-mode"){ui.mode=b.dataset.mode;openSchedule(false);}
+  if(action==="schedule-select"){ui.selected=b.dataset.date;openSchedule(false);}
+  if(action==="schedule-prev"||action==="schedule-next"){const sign=action==="schedule-prev"?-1:1;const d=fromDate(ui.selected);ui.selected=localDate(ui.mode==="day"?shiftDate(d,sign):ui.mode==="week"?shiftDate(d,7*sign):new Date(d.getFullYear(),d.getMonth()+sign,Math.min(d.getDate(),new Date(d.getFullYear(),d.getMonth()+sign+1,0).getDate())));openSchedule(false);}
+  if(action==="schedule-today"){ui.selected=localDate(new Date());openSchedule(false);}
+  if(action==="schedule-add"){eventForm();}
+  if(action==="schedule-edit"){const e=events().find(x=>x.id===b.dataset.id);if(e)eventForm(e);}
+  if(action==="schedule-delete"){if(confirm("Delete this event"+(events().find(x=>x.id===b.dataset.id)?.repeat==="weekly"?" and all its repeats":"")+"?")){updateEvents(events().filter(e=>e.id!==b.dataset.id));closeSheet();toast("Event deleted");}}
+  if(action==="schedule-import"){importForm();}
+  if(action==="schedule-ocr"){readScreenshots();}
+  if(action==="schedule-parse"){
+   const draft=ui.workingImport;if(!draft)return true;
+   draft.domain=document.querySelector("#import-domain").value;
+   draft.raw=document.querySelector("#schedule-raw-text").value;
+   draft.rows=parseImportedText(draft.raw,draft.domain,fromDate(ui.selected).getFullYear());
+   importPreview();
+  }
+  return true;
+ }
+ function handleInput(target){
+  if(target?.name==="repeat"){const box=document.querySelector("#schedule-repeat-options");if(box)box.hidden=target.value!=="weekly";return true;}
+  return false;
+ }
+ function handleSubmit(form){
+  if(form.id==="schedule-event-form"){
+   const values=new FormData(form);
+   const id=form.dataset.id||uid();
+   const date=parseIso(values.get("date"));
+   const allDay=values.has("allDay");
+   const startTime=String(values.get("startTime")||""),endTime=String(values.get("endTime")||"");
+   const repeat=values.get("repeat")==="weekly"?"weekly":"none";
+   const weekdays=repeat==="weekly"?values.getAll("weekday").map(Number):[];
+   const until=parseIso(values.get("until"));
+   if(!date){alert("Choose a valid date.");return true;}
+   if(!allDay&&(!startTime||!endTime)){alert("Enter start and end times, or choose All day.");return true;}
+   if(!allDay&&startTime===endTime){alert("Start and end times cannot be the same.");return true;}
+   if(repeat==="weekly"&&!weekdays.length){alert("Select at least one repeat day.");return true;}
+   if(until&&until<date){alert("Repeat-until date cannot be before the start date.");return true;}
+   const item={id,domain:String(values.get("domain")),title:String(values.get("title")||"").trim().slice(0,140),date,startTime:allDay?"":startTime,endTime:allDay?"":endTime,allDay,location:String(values.get("location")||"").trim().slice(0,200),notes:String(values.get("notes")||"").trim().slice(0,2000),repeat,weekdays,until};
+   if(!item.title){alert("Enter a title.");return true;}
+   updateEvents(events().some(e=>e.id===id)?events().map(e=>e.id===id?item:e):[...events(),item]);
+   ui.selected=date;closeSheet();toast("Event saved");return true;
+  }
+  if(form.id==="schedule-import-form"){
+   const draft=ui.workingImport;if(!draft)return true;
+   const v=new FormData(form),incoming=[],existing=new Set(events().map(e=>[e.domain,e.date,e.startTime,e.endTime].join("|")));
+   for(let i=0;i<draft.rows.length;i++){
+    if(!v.has("include-"+i))continue;
+    const date=parseIso(v.get("date-"+i)),startTime=String(v.get("start-"+i)||""),endTime=String(v.get("end-"+i)||"");
+    if(!date||!startTime||!endTime){alert("Check the dates and times for selected events.");return true;}
+    const key=[draft.domain,date,startTime,endTime].join("|");
+    if(existing.has(key))continue;existing.add(key);
+    incoming.push({id:uid(),domain:draft.domain,title:String(v.get("title-"+i)||"").trim()||"Event",date,startTime,endTime,allDay:false,location:String(v.get("location-"+i)||"").trim(),notes:String(v.get("notes-"+i)||"").trim(),repeat:"none",weekdays:[],until:""});
+   }
+   if(!incoming.length){toast("No new events selected");return true;}
+   updateEvents([...events(),...incoming]);ui.domain=draft.domain;ui.selected=incoming[0].date;ui.workingImport=null;closeSheet();toast(incoming.length+" event"+(incoming.length===1?"":"s")+" added");return true;
+  }
+  return false;
+ }
+ function setDomain(domain){if(["work","school","personal","all"].includes(domain))ui.domain=domain;}
+ return{render,homeSummary,handleAction,handleInput,handleSubmit,setDomain};
+}
+window.CommandSchedule={create,validate:(e)=>({
+ id:String(e.id||uid()).slice(0,150),domain:Object.hasOwn(DOMAINS,e.domain)?e.domain:"personal",
+ title:String(e.title||"Untitled event").slice(0,140),date:parseIso(e.date),startTime:/^\d\d:\d\d$/.test(e.startTime||"")?e.startTime:"",endTime:/^\d\d:\d\d$/.test(e.endTime||"")?e.endTime:"",
+ allDay:!!e.allDay,location:String(e.location||"").slice(0,200),notes:String(e.notes||"").slice(0,2000),
+ repeat:e.repeat==="weekly"?"weekly":"none",weekdays:Array.isArray(e.weekdays)?e.weekdays.map(Number).filter(n=>n>=0&&n<=6):[],until:parseIso(e.until)
+}),parseImportedText};
+})();
