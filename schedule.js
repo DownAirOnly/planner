@@ -159,7 +159,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
       const needsEdit=!row.startTime||!row.endTime;
       const time=fmtTime(row);
       return '<div class="schedule-proposed-row" data-review-row="'+i+'">'+
-        '<div class="schedule-proposed-top"><label class="schedule-proposed-check"><input type="checkbox" name="include-'+i+'" '+(duplicate?"":"checked")+' aria-label="Include shift '+(i+1)+'">'+
+        '<div class="schedule-proposed-top"><label class="schedule-proposed-check"><input type="checkbox" name="include-'+i+'" '+(duplicate||row._include===false?"":"checked")+' aria-label="Include shift '+(i+1)+'">'+
           '<span class="schedule-proposed-main"><strong>'+esc(labelDate(row.date))+'</strong>'+
             '<span>'+esc(time||"Time needs review")+'</span>'+
             (row.location?'<small>'+esc(row.location)+'</small>':"")+
@@ -254,10 +254,10 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
      detected.push(...spatial,...plain);
     texts.push(result.data?.text||"");
    }
-   raw.value=[raw.value.trim(),...texts.map(t=>t.trim())].filter(Boolean).join("\n");
+   raw.value=texts.map(t=>t.trim()).filter(Boolean).join("\n");
    const recognized=new Map(detected.map(e=>[[e.domain,e.date,e.startTime,e.endTime].join("|"),e]));
    if(ui.workingImport)ui.workingImport.ocrRows=[...recognized.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
-   status.textContent="Review the suggested shifts below. Nothing has been saved yet.";
+   status.textContent=(ui.workingImport?.ocrRows.length||0)+" shift suggestions ready. Check and save below.";
    const draft=ui.workingImport;
    if(draft){
     draft.domain=document.querySelector("#import-domain")?.value||draft.domain;
