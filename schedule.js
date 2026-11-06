@@ -155,7 +155,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
    '<div class="field"><label for="import-domain">Import into</label><select id="import-domain">'+Object.keys(DOMAINS).map(d=>'<option value="'+d+'" '+(domain===d?"selected":"")+'>'+DOMAINS[d].label+'</option>').join("")+'</select></div>'+
    '<div class="schedule-import-note">Choose screenshots or paste text copied with iPhone Live Text. Images are read on your device; they are not saved or uploaded to Command. The OCR library requires internet when first loaded.</div>'+
    '<div class="field"><label for="schedule-image-input">Screenshots (PNG, JPG, HEIC if supported)</label><input type="file" id="schedule-image-input" accept="image/*" multiple></div>'+
-   '<button class="button secondary" type="button" data-action="schedule-ocr">'+ic("upload")+' Read screenshot text</button>'+
+   '<button class="button secondary" type="button" data-action="schedule-ocr">'+ic("upload")+' Retry reading screenshots</button>'+
    '<p id="schedule-ocr-status" class="schedule-hint" role="status"></p>'+
    '<div class="field" style="margin-top:16px"><label for="schedule-raw-text">Schedule text (editable)</label><textarea id="schedule-raw-text" rows="7" placeholder="Tue 11/10 8:00 AM - 4:00 PM&#10;Wed 11/11 9:00 AM - 5:00 PM"></textarea></div>'+
    '<button class="button" type="button" data-action="schedule-parse">Find dates & times</button>'+
@@ -171,9 +171,9 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
    '<form id="schedule-import-form"><div class="schedule-import-preview">'+found.map((row,i)=>{
     const dup=existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
     return '<div class="schedule-import-row"><label class="checkbox-label"><input type="checkbox" name="include-'+i+'" '+(dup?"":"checked")+'><strong>Event '+(i+1)+'</strong>'+(dup?' <span class="chip waiting">Possible duplicate</span>':"")+'</label>'+
-     '<div class="field"><label>Title</label><input name="title-'+i+'" required value="'+esc(row.title)+'"></div>'+
-     '<div class="form-grid"><div class="field"><label>Date</label><input type="date" name="date-'+i+'" required value="'+esc(row.date)+'"></div><div class="field"><label>Start</label><input type="time" name="start-'+i+'" required value="'+esc(row.startTime)+'"></div></div>'+
-     '<div class="form-grid"><div class="field"><label>End</label><input type="time" name="end-'+i+'" required value="'+esc(row.endTime)+'"></div><div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div></div>'+
+     '<div class="field"><label>Title</label><input name="title-'+i+'" value="'+esc(row.title)+'"></div>'+
+     '<div class="form-grid"><div class="field"><label>Date</label><input type="date" name="date-'+i+'" value="'+esc(row.date)+'"></div><div class="field"><label>Start</label><input type="time" name="start-'+i+'" value="'+esc(row.startTime)+'"></div></div>'+
+     '<div class="form-grid"><div class="field"><label>End</label><input type="time" name="end-'+i+'" value="'+esc(row.endTime)+'"></div><div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div></div>'+
      '<div class="field"><label>Notes</label><input name="notes-'+i+'" value="'+esc(row.notes)+'"></div></div>';
    }).join("")+'</div><button class="button" type="submit">'+ic("check")+' Save selected events</button></form>';
  }
@@ -208,7 +208,14 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
     texts.push(result.data?.text||"");
    }
    raw.value=[raw.value.trim(),...texts.map(t=>t.trim())].filter(Boolean).join("\n");
-   status.textContent="Text extracted. Check the text below, then choose “Find dates & times.”";
+   status.textContent="Text extracted. Review the suggested events and correct anything uncertain.";
+   const draft=ui.workingImport;
+   if(draft){
+    draft.domain=document.querySelector("#import-domain")?.value||draft.domain;
+    draft.raw=raw.value;
+    draft.rows=parseImportedText(draft.raw,draft.domain,fromDate(ui.selected).getFullYear());
+    importPreview();
+   }
   }catch(err){status.textContent=err.message||"Could not read the image. Try Live Text in Photos.";}
   finally{if(worker)try{await worker.terminate();}catch(e){} if(button)button.disabled=false;if(input)input.value="";}
  }
@@ -236,6 +243,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
   return true;
  }
  function handleInput(target){
+  if(target?.id==="schedule-image-input"){readScreenshots();return true;}
   if(target?.name==="repeat"){const box=document.querySelector("#schedule-repeat-options");if(box)box.hidden=target.value!=="weekly";return true;}
   return false;
  }
