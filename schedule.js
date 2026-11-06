@@ -259,7 +259,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
    raw.value=texts.map(t=>t.trim()).filter(Boolean).join("\n");
    const recognized=new Map(detected.map(e=>[[e.domain,e.date,e.startTime,e.endTime].join("|"),e]));
    if(ui.workingImport)ui.workingImport.ocrRows=[...recognized.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
-   status.textContent=(ui.workingImport?.ocrRows.length||0)+" shift suggestions ready. Check and save below.";
+   status.textContent="Screenshot read. Preparing your schedule…";
    const draft=ui.workingImport;
    if(draft){
     draft.domain=document.querySelector("#import-domain")?.value||draft.domain;
@@ -269,6 +269,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
     const merged=new Map([...plain,...draft.ocrRows].map(e=>[[e.domain,e.date,e.startTime,e.endTime].join("|"),e]));
     draft.rows=[...merged.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
     importPreview();
+    status.textContent=draft.rows.length+" proposed shift"+(draft.rows.length===1?"":"s")+" ready to review.";
    }
   }catch(err){status.textContent=err.message||"Could not read the image. Try Live Text in Photos.";}
   finally{if(worker)try{await worker.terminate();}catch(e){} if(button)button.disabled=false;}
