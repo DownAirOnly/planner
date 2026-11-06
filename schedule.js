@@ -150,17 +150,24 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
   const draft=ui.workingImport;if(!draft)return;
   const found=draft.rows;
   const target=document.querySelector("#schedule-import-results");if(!target)return;
-  if(!found.length){target.innerHTML='<div class="schedule-import-note" style="margin-top:12px">No clear date-and-time pairs found. Check the extracted text, or add events manually. Example: <strong>Tue 11/10 8:00 AM - 4:00 PM</strong>.</div>';return;}
   const existing=new Set(events().map(e=>[e.domain,e.date,e.startTime,e.endTime].join("|")));
-  target.innerHTML='<div class="section-head" style="margin-top:18px"><h2>Review '+found.length+' event'+(found.length===1?"":"s")+'</h2><span class="muted">Edit before saving</span></div>'+
-   '<form id="schedule-import-form"><div class="schedule-import-preview">'+found.map((row,i)=>{
-    const dup=existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
-    return '<div class="schedule-import-row"><label class="checkbox-label"><input type="checkbox" name="include-'+i+'" '+(dup?"":"checked")+'><strong>Event '+(i+1)+'</strong>'+(dup?' <span class="chip waiting">Possible duplicate</span>':"")+'</label>'+
-     '<div class="field"><label>Title</label><input name="title-'+i+'" value="'+esc(row.title)+'"></div>'+
-     '<div class="form-grid"><div class="field"><label>Date</label><input type="date" name="date-'+i+'" value="'+esc(row.date)+'"></div><div class="field"><label>Start</label><input type="time" name="start-'+i+'" value="'+esc(row.startTime)+'"></div></div>'+
-     '<div class="form-grid"><div class="field"><label>End</label><input type="time" name="end-'+i+'" value="'+esc(row.endTime)+'"></div><div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div></div>'+
-     '<div class="field"><label>Notes</label><input name="notes-'+i+'" value="'+esc(row.notes)+'"></div></div>';
-   }).join("")+'</div><button class="button" type="submit">'+ic("check")+' Save selected events</button></form>';
+  const detected=window.CommandImportParser.countRanges(draft.raw);
+  const warning=detected>found.length?'<div class="schedule-import-note"><strong>Check for missing shifts.</strong> '+detected+' time ranges were recognized, but only '+found.length+' dates matched. You can add missing shifts below.</div>':"";
+  target.innerHTML='<div class="section-head" style="margin-top:18px"><h2>Review '+found.length+' shift'+(found.length===1?"":"s")+'</h2><span class="muted">Not saved yet</span></div>'+warning+
+  (found.length?'<form id="schedule-import-form"><div class="schedule-import-preview">'+found.map((row,i)=>{
+   const dup=existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
+   const needsEdit=!row.startTime||!row.endTime;
+   return '<div class="schedule-import-row">'+
+    '<label class="checkbox-label"><input type="checkbox" name="include-'+i+'" '+(dup?"":"checked")+'><span class="schedule-import-row-summary"><strong>'+esc(labelDate(row.date))+'</strong><small>'+esc(fmtTime(row))+(row.location?' · '+esc(row.location):"")+'</small></span></label>'+
+    (dup?'<span class="chip waiting">Already saved</span>':"")+
+    '<details '+(needsEdit?"open":"")+'><summary>Edit shift details</summary><div class="schedule-import-row-fields">'+
+    '<div class="field"><label>Title</label><input name="title-'+i+'" value="'+esc(row.title)+'"></div>'+
+    '<div class="form-grid"><div class="field"><label>Date</label><input type="date" name="date-'+i+'" value="'+esc(row.date)+'"></div><div class="field"><label>Start</label><input type="time" name="start-'+i+'" value="'+esc(row.startTime)+'"></div></div>'+
+    '<div class="form-grid"><div class="field"><label>End</label><input type="time" name="end-'+i+'" value="'+esc(row.endTime)+'"></div><div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div></div>'+
+    '<div class="field"><label>Notes</label><input name="notes-'+i+'" value="'+esc(row.notes)+'"></div></div></details></div>';
+  }).join("")+'</div><button class="button" type="submit">'+ic("check")+' Save selected shifts</button></form>':"")+
+  '<button class="button secondary schedule-manual-add" data-action="schedule-add-review" type="button">'+ic("plus")+' Add missing shift</button>'+
+  (!found.length?'<p class="schedule-hint">No complete shifts detected. Check the extracted text or enter a shift manually.</p>':"");
  }
  function loadTesseract(){
   if(window.Tesseract&&typeof window.Tesseract.createWorker==="function")return Promise.resolve();
@@ -227,7 +234,16 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
   if(action==="schedule-delete"){if(confirm("Delete this event"+(events().find(x=>x.id===b.dataset.id)?.repeat==="weekly"?" and all its repeats":"")+"?")){updateEvents(events().filter(e=>e.id!==b.dataset.id));closeSheet();toast("Event deleted");}}
   if(action==="schedule-import"){importForm();}
   if(action==="schedule-ocr"){readScreenshots();}
-  if(action==="schedule-parse"){
+  if(action==="schedule-add-review"){
+    const draft=ui.workingImport;
+    if(draft){
+     const month=document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7);
+     const date=ui.selected.startsWith(month)?ui.selected:month+"-01";
+     draft.rows.push({id:uid(),domain:draft.domain,title:draft.domain==="work"?"Work shift":draft.domain==="school"?"Class":"Event",date,startTime:"",endTime:"",allDay:false,location:"",notes:"",repeat:"none",weekdays:[],until:""});
+     importPreview();
+    }
+   }
+   if(action==="schedule-parse"){
    const draft=ui.workingImport;if(!draft)return true;
    draft.domain=document.querySelector("#import-domain").value;
    draft.raw=document.querySelector("#schedule-raw-text").value;
