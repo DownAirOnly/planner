@@ -12,7 +12,7 @@ const labelDate=s=>{const d=fromDate(s);return d?d.toLocaleDateString(undefined,
 const fullDate=s=>{const d=fromDate(s);return d?d.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric",year:"numeric"}):s;};
 const clock=t=>{if(!t)return"";const bits=t.split(":");let h=+bits[0];return (h%12||12)+":"+bits[1]+" "+(h>=12?"PM":"AM");};
 const uid=()=>crypto&&crypto.randomUUID?crypto.randomUUID():"event-"+Date.now()+"-"+Math.floor(Math.random()*99999);
-const fmtTime=e=>e.allDay?"All day":[clock(e.startTime),clock(e.endTime)].filter(Boolean).join("–");
+const fmtTime=e=>e.allDay?"All day":[clock(e.startTime),clock(e.endTime)].filter(Boolean).join("–")+(e.startTime&&e.endTime&&e.endTime<e.startTime?" (next day)":"");
 const keyDate=d=>d.getDay();
 function visibleOnDate(e,iso){
  if(!e||!iso||!e.date||iso<e.date)return false;
@@ -53,23 +53,7 @@ function parseTimeRange(text){
  const start=conv(m[1],m[2],a),end=conv(m[4],m[5],b);
  return start&&end?{startTime:start,endTime:end,matched:m[0]}:null;
 }
-function parseImportedText(raw,domain,defaultYear){
- const lines=String(raw).split(/\r?\n/).map(s=>s.trim()).filter(Boolean).slice(0,250);
- const out=[];const seen=new Set();
- for(let i=0;i<lines.length;i++){
-   const dateMatch=parseDateLoose(lines[i],defaultYear);
-   if(!dateMatch)continue;
-   let line=lines[i];let times=parseTimeRange(line);
-   if(!times && i+1<lines.length && !parseDateLoose(lines[i+1],defaultYear)){times=parseTimeRange(lines[i+1]);if(times)line+=" "+lines[i+1];}
-   if(!times&&i+2<lines.length && !parseDateLoose(lines[i+1],defaultYear)&&!parseDateLoose(lines[i+2],defaultYear)){times=parseTimeRange(lines[i+1]+" "+lines[i+2]);if(times)line+=" "+lines[i+1]+" "+lines[i+2];}
-   if(!times)continue;
-   const identifier=dateMatch.iso+"|"+times.startTime+"|"+times.endTime;
-   if(seen.has(identifier))continue;seen.add(identifier);
-   const fragment=line.replace(dateMatch.matched,"").replace(times.matched,"").replace(/\b(Mon|Tue|Tues|Wed|Thu|Thur|Thurs|Fri|Sat|Sun)(day)?\b/gi,"").replace(/[|•]+/g," ").trim().replace(/^[-,: ]+|[-,: ]+$/g,"").slice(0,90);
-   out.push({id:uid(),domain,title:domain==="work"?"Work shift":domain==="school"?"Class":"Event",date:dateMatch.iso,startTime:times.startTime,endTime:times.endTime,allDay:false,location:"",notes:fragment||"",repeat:"none",weekdays:[],until:""});
- }
- return out.slice(0,100);
-}
+function parseImportedText(raw,domain,year,month){return window.CommandImportParser.parseText(raw,domain,year,month);}
 function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}){
  const ui={domain:"work",mode:"week",selected:localDate(new Date()),workingImport:null};
  const events=()=>getEvents()||[];
@@ -150,10 +134,11 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
  }
  function importForm(){
   const domain=ui.domain==="all"?"work":ui.domain;
-  ui.workingImport={domain,rows:[],raw:""};
+  ui.workingImport={domain,rows:[],raw:"",ocrRows:[]};
   showSheet('<div class="sheet-head"><h2 class="sheet-title">Import a schedule</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+ic("x")+'</button></div>'+
    '<div class="field"><label for="import-domain">Import into</label><select id="import-domain">'+Object.keys(DOMAINS).map(d=>'<option value="'+d+'" '+(domain===d?"selected":"")+'>'+DOMAINS[d].label+'</option>').join("")+'</select></div>'+
    '<div class="schedule-import-note">Choose screenshots or paste text copied with iPhone Live Text. Images are read on your device; they are not saved or uploaded to Command. The OCR library requires internet when first loaded.</div>'+
+   '<div class="field"><label for="schedule-month">Schedule month</label><input id="schedule-month" type="month" value="'+esc(ui.selected.slice(0,7))+'"></div>'+
    '<div class="field"><label for="schedule-image-input">Screenshots (PNG, JPG, HEIC if supported)</label><input type="file" id="schedule-image-input" accept="image/*" multiple></div>'+
    '<button class="button secondary" type="button" data-action="schedule-ocr">'+ic("upload")+' Retry reading screenshots</button>'+
    '<p id="schedule-ocr-status" class="schedule-hint" role="status"></p>'+
@@ -201,19 +186,28 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
   try{
    status.textContent="Loading text reader…";await loadTesseract();
    worker=await window.Tesseract.createWorker("eng");
-   const texts=[];
+   const texts=[],detected=[];
    for(let i=0;i<files.length;i++){
     status.textContent="Reading screenshot "+(i+1)+" of "+files.length+"…";
-    const result=await worker.recognize(files[i]);
+    const result=await worker.recognize(files[i],{}, {tsv:true});
+     const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
+     const activeDomain=document.querySelector("#import-domain")?.value||"work";
+     const spatial=window.CommandImportParser.parseTsv(result.data?.tsv||"",result.data?.text||"",activeDomain,yr,mo);
+     const plain=parseImportedText(result.data?.text||"",activeDomain,yr,mo);
+     detected.push(...(spatial.length>=plain.length?spatial:plain));
     texts.push(result.data?.text||"");
    }
    raw.value=[raw.value.trim(),...texts.map(t=>t.trim())].filter(Boolean).join("\n");
+   const recognized=new Map(detected.map(e=>[[e.domain,e.date,e.startTime,e.endTime].join("|"),e]));
+   if(ui.workingImport)ui.workingImport.ocrRows=[...recognized.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
    status.textContent="Text extracted. Review the suggested events and correct anything uncertain.";
    const draft=ui.workingImport;
    if(draft){
     draft.domain=document.querySelector("#import-domain")?.value||draft.domain;
     draft.raw=raw.value;
-    draft.rows=parseImportedText(draft.raw,draft.domain,fromDate(ui.selected).getFullYear());
+    const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
+    const plain=parseImportedText(draft.raw,draft.domain,yr,mo);
+    draft.rows=draft.ocrRows.length>=plain.length?draft.ocrRows:plain;
     importPreview();
    }
   }catch(err){status.textContent=err.message||"Could not read the image. Try Live Text in Photos.";}
@@ -237,7 +231,9 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
    const draft=ui.workingImport;if(!draft)return true;
    draft.domain=document.querySelector("#import-domain").value;
    draft.raw=document.querySelector("#schedule-raw-text").value;
-   draft.rows=parseImportedText(draft.raw,draft.domain,fromDate(ui.selected).getFullYear());
+   const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
+    draft.rows=parseImportedText(draft.raw,draft.domain,yr,mo);
+    draft.ocrRows=[];
    importPreview();
   }
   return true;
