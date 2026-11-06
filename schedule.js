@@ -135,39 +135,89 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
  function importForm(){
   const domain=ui.domain==="all"?"work":ui.domain;
   ui.workingImport={domain,rows:[],raw:"",ocrRows:[]};
-  showSheet('<div class="sheet-head"><h2 class="sheet-title">Import a schedule</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+ic("x")+'</button></div>'+
-   '<div class="field"><label for="import-domain">Import into</label><select id="import-domain">'+Object.keys(DOMAINS).map(d=>'<option value="'+d+'" '+(domain===d?"selected":"")+'>'+DOMAINS[d].label+'</option>').join("")+'</select></div>'+
-   '<div class="schedule-import-note">Choose screenshots or paste text copied with iPhone Live Text. Images are read on your device; they are not saved or uploaded to Command. The OCR library requires internet when first loaded.</div>'+
-   '<div class="field"><label for="schedule-month">Schedule month</label><input id="schedule-month" type="month" value="'+esc(ui.selected.slice(0,7))+'"></div>'+
-   '<div class="field"><label for="schedule-image-input">Screenshots (PNG, JPG, HEIC if supported)</label><input type="file" id="schedule-image-input" accept="image/*" multiple></div>'+
-   '<button class="button secondary" type="button" data-action="schedule-ocr">'+ic("upload")+' Retry reading screenshots</button>'+
-   '<p id="schedule-ocr-status" class="schedule-hint" role="status"></p>'+
-   '<div class="field" style="margin-top:16px"><label for="schedule-raw-text">Schedule text (editable)</label><textarea id="schedule-raw-text" rows="7" placeholder="Tue 11/10 8:00 AM - 4:00 PM&#10;Wed 11/11 9:00 AM - 5:00 PM"></textarea></div>'+
-   '<button class="button" type="button" data-action="schedule-parse">Find dates & times</button>'+
-   '<div id="schedule-import-results" class="schedule-import-results"></div>');
+  showSheet('<div class="sheet-head"><h2 class="sheet-title">Import schedule</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+ic("x")+'</button></div>'+
+    '<div class="field"><label for="import-domain">Calendar</label><select id="import-domain">'+Object.keys(DOMAINS).map(d=>'<option value="'+d+'" '+(domain===d?"selected":"")+'>'+DOMAINS[d].label+'</option>').join("")+'</select></div>'+
+    '<div class="field"><label for="schedule-image-input">Schedule screenshot</label><input type="file" id="schedule-image-input" accept="image/*" multiple></div>'+
+    '<p id="schedule-ocr-status" class="schedule-hint" role="status">Choose a screenshot. Command will propose shifts for you to review.</p>'+
+    '<div id="schedule-import-results" class="schedule-import-results"></div>'+
+    '<details class="schedule-import-advanced"><summary>Other import options</summary><div class="schedule-import-advanced-content">'+
+      '<div class="field"><label for="schedule-month">Schedule month</label><input id="schedule-month" type="month" value="'+esc(ui.selected.slice(0,7))+'"></div>'+
+      '<button class="button secondary" data-action="schedule-ocr" type="button">'+ic("upload")+' Read screenshot again</button>'+
+      '<div class="field"><label for="schedule-raw-text">Copied or extracted schedule text</label><textarea id="schedule-raw-text" rows="5" placeholder="Nov 6 2:45 PM-1:00 AM&#10;Nov 7 1:30 PM-8:30 PM"></textarea></div>'+
+      '<button class="button secondary" data-action="schedule-parse" type="button">Build schedule from text</button>'+
+      '<p class="schedule-hint">This text is only for troubleshooting. It is never added to your calendar as notes.</p>'+
+    '</div></details>');
  }
  function importPreview(){
   const draft=ui.workingImport;if(!draft)return;
-  const found=draft.rows;
-  const target=document.querySelector("#schedule-import-results");if(!target)return;
+  const found=draft.rows, target=document.querySelector("#schedule-import-results");if(!target)return;
   const existing=new Set(events().map(e=>[e.domain,e.date,e.startTime,e.endTime].join("|")));
-  const detected=window.CommandImportParser.countRanges(draft.raw);
-  const warning=detected>found.length?'<div class="schedule-import-note"><strong>Check for missing shifts.</strong> '+detected+' time ranges were recognized, but only '+found.length+' dates matched. You can add missing shifts below.</div>':"";
-  target.innerHTML='<div class="section-head" style="margin-top:18px"><h2>Review '+found.length+' shift'+(found.length===1?"":"s")+'</h2><span class="muted">Not saved yet</span></div>'+warning+
-  (found.length?'<form id="schedule-import-form"><div class="schedule-import-preview">'+found.map((row,i)=>{
-   const dup=existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
-   const needsEdit=!row.startTime||!row.endTime;
-   return '<div class="schedule-import-row">'+
-    '<label class="checkbox-label"><input type="checkbox" name="include-'+i+'" '+(dup?"":"checked")+'><span class="schedule-import-row-summary"><strong>'+esc(labelDate(row.date))+'</strong><small>'+esc(fmtTime(row))+(row.location?' · '+esc(row.location):"")+'</small></span></label>'+
-    (dup?'<span class="chip waiting">Already saved</span>':"")+
-    '<details '+(needsEdit?"open":"")+'><summary>Edit shift details</summary><div class="schedule-import-row-fields">'+
-    '<div class="field"><label>Title</label><input name="title-'+i+'" value="'+esc(row.title)+'"></div>'+
-    '<div class="form-grid"><div class="field"><label>Date</label><input type="date" name="date-'+i+'" value="'+esc(row.date)+'"></div><div class="field"><label>Start</label><input type="time" name="start-'+i+'" value="'+esc(row.startTime)+'"></div></div>'+
-    '<div class="form-grid"><div class="field"><label>End</label><input type="time" name="end-'+i+'" value="'+esc(row.endTime)+'"></div><div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div></div>'+
-    '<div class="field"><label>Notes</label><input name="notes-'+i+'" value="'+esc(row.notes)+'"></div></div></details></div>';
-  }).join("")+'</div><button class="button" type="submit">'+ic("check")+' Save selected shifts</button></form>':"")+
-  '<button class="button secondary schedule-manual-add" data-action="schedule-add-review" type="button">'+ic("plus")+' Add missing shift</button>'+
-  (!found.length?'<p class="schedule-hint">No complete shifts detected. Check the extracted text or enter a shift manually.</p>':"");
+  target.innerHTML=(found.length?'<div class="section-head schedule-review-heading"><h2>Proposed schedule</h2><span class="muted">'+found.length+' shift'+(found.length===1?"":"s")+'</span></div>'+
+    '<p class="schedule-hint">Check the shifts, then save. Tap Edit to change anything.</p>'+
+    '<form id="schedule-import-form"><div class="schedule-import-preview">'+found.map((row,i)=>{
+      const duplicate=existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
+      const needsEdit=!row.startTime||!row.endTime;
+      const time=fmtTime(row);
+      return '<div class="schedule-proposed-row" data-review-row="'+i+'">'+
+        '<div class="schedule-proposed-top"><label class="schedule-proposed-check"><input type="checkbox" name="include-'+i+'" '+(duplicate?"":"checked")+' aria-label="Include shift '+(i+1)+'">'+
+          '<span class="schedule-proposed-main"><strong>'+esc(labelDate(row.date))+'</strong>'+
+            '<span>'+esc(time||"Time needs review")+'</span>'+
+            (row.location?'<small>'+esc(row.location)+'</small>':"")+
+          '</span></label>'+
+          '<button type="button" class="schedule-row-edit" data-action="schedule-review-toggle" data-index="'+i+'" aria-expanded="'+(needsEdit?"true":"false")+'">Edit</button></div>'+
+        (duplicate?'<div class="schedule-duplicate-note">Already saved — unchecked</div>':"")+
+        '<div class="schedule-row-editor" id="schedule-review-'+i+'" '+(needsEdit?"":"hidden")+'>'+
+          '<div class="field"><label>Title</label><input name="title-'+i+'" value="'+esc(row.title)+'"></div>'+
+          '<div class="form-grid"><div class="field"><label>Date</label><input type="date" name="date-'+i+'" value="'+esc(row.date)+'"></div>'+
+          '<div class="field"><label>Start</label><input type="time" name="start-'+i+'" value="'+esc(row.startTime)+'"></div></div>'+
+          '<div class="form-grid"><div class="field"><label>End</label><input type="time" name="end-'+i+'" value="'+esc(row.endTime)+'"></div>'+
+          '<div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div></div>'+
+          '<div class="field"><label>Notes</label><input name="notes-'+i+'" value="'+esc(row.notes)+'"></div>'+
+          '<button type="button" class="button secondary" data-action="schedule-review-done" data-index="'+i+'">Done editing</button>'+
+        '</div></div>';
+    }).join("")+'</div><div class="schedule-import-actions"><button class="button" type="submit">'+ic("check")+' Save selected shifts</button>'+
+      '<button class="button secondary" type="button" data-action="schedule-add-review">'+ic("plus")+' Add shift</button></div></form>':
+      '<div class="schedule-review-empty"><strong>No shifts detected yet.</strong><p>Try another screenshot, or open Other import options to paste the schedule.</p>'+
+      '<button class="button secondary" type="button" data-action="schedule-add-review">'+ic("plus")+' Add a shift</button></div>');
+ }
+ function preserveReviewEdits(){
+  const draft=ui.workingImport;
+  const form=document.querySelector("#schedule-import-form");
+  if(!draft||!form)return;
+  const values=new FormData(form);
+  draft.rows=draft.rows.map((row,i)=>({
+    ...row,
+    date:parseIso(values.get("date-"+i))||row.date,
+    title:String(values.get("title-"+i)||row.title).trim(),
+    startTime:String(values.get("start-"+i)||""),
+    endTime:String(values.get("end-"+i)||""),
+    location:String(values.get("location-"+i)||"").trim(),
+    notes:String(values.get("notes-"+i)||"").trim(),
+    _include:values.has("include-"+i)
+  }));
+ }
+ function toggleRow(index,forceClose=false){
+  const fields=document.querySelector("#schedule-review-"+index);
+  const button=document.querySelector('[data-action="schedule-review-toggle"][data-index="'+index+'"]');
+  if(!fields)return;
+  fields.hidden=forceClose?true:!fields.hidden;
+  if(button){button.textContent=fields.hidden?"Edit":"Close";button.setAttribute("aria-expanded",String(!fields.hidden));}
+  if(forceClose){
+    const form=document.querySelector("#schedule-import-form");
+    if(form) {
+      const v=new FormData(form), row=ui.workingImport?.rows[index];
+      if(row){
+        const date=parseIso(v.get("date-"+index))||row.date;
+        const time=fmtTime({...row,startTime:String(v.get("start-"+index)||""),endTime:String(v.get("end-"+index)||"")});
+        const root=document.querySelector('[data-review-row="'+index+'"]');
+        if(root){
+          const title=root.querySelector(".schedule-proposed-main strong"),t=root.querySelector(".schedule-proposed-main > span");
+          if(title)title.textContent=labelDate(date);
+          if(t)t.textContent=time||"Time needs review";
+        }
+      }
+    }
+  }
  }
  function loadTesseract(){
   if(window.Tesseract&&typeof window.Tesseract.createWorker==="function")return Promise.resolve();
@@ -201,20 +251,21 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
      const activeDomain=document.querySelector("#import-domain")?.value||"work";
      const spatial=window.CommandImportParser.parseTsv(result.data?.tsv||"",result.data?.text||"",activeDomain,yr,mo);
      const plain=parseImportedText(result.data?.text||"",activeDomain,yr,mo);
-     detected.push(...(spatial.length>=plain.length?spatial:plain));
+     detected.push(...spatial,...plain);
     texts.push(result.data?.text||"");
    }
    raw.value=[raw.value.trim(),...texts.map(t=>t.trim())].filter(Boolean).join("\n");
    const recognized=new Map(detected.map(e=>[[e.domain,e.date,e.startTime,e.endTime].join("|"),e]));
    if(ui.workingImport)ui.workingImport.ocrRows=[...recognized.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
-   status.textContent="Text extracted. Review the suggested events and correct anything uncertain.";
+   status.textContent="Review the suggested shifts below. Nothing has been saved yet.";
    const draft=ui.workingImport;
    if(draft){
     draft.domain=document.querySelector("#import-domain")?.value||draft.domain;
     draft.raw=raw.value;
     const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
     const plain=parseImportedText(draft.raw,draft.domain,yr,mo);
-    draft.rows=draft.ocrRows.length>=plain.length?draft.ocrRows:plain;
+    const merged=new Map([...plain,...draft.ocrRows].map(e=>[[e.domain,e.date,e.startTime,e.endTime].join("|"),e]));
+    draft.rows=[...merged.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
     importPreview();
    }
   }catch(err){status.textContent=err.message||"Could not read the image. Try Live Text in Photos.";}
@@ -234,13 +285,19 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
   if(action==="schedule-delete"){if(confirm("Delete this event"+(events().find(x=>x.id===b.dataset.id)?.repeat==="weekly"?" and all its repeats":"")+"?")){updateEvents(events().filter(e=>e.id!==b.dataset.id));closeSheet();toast("Event deleted");}}
   if(action==="schedule-import"){importForm();}
   if(action==="schedule-ocr"){readScreenshots();}
-  if(action==="schedule-add-review"){
+  if(action==="schedule-review-toggle"){toggleRow(+b.dataset.index);return true;}
+   if(action==="schedule-review-done"){toggleRow(+b.dataset.index,true);return true;}
+   if(action==="schedule-add-review"){
     const draft=ui.workingImport;
     if(draft){
      const month=document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7);
      const date=ui.selected.startsWith(month)?ui.selected:month+"-01";
+     preserveReviewEdits();
      draft.rows.push({id:uid(),domain:draft.domain,title:draft.domain==="work"?"Work shift":draft.domain==="school"?"Class":"Event",date,startTime:"",endTime:"",allDay:false,location:"",notes:"",repeat:"none",weekdays:[],until:""});
      importPreview();
+      const newIndex=draft.rows.length-1;
+      const target=document.querySelector("#schedule-review-"+newIndex);
+      if(target)target.scrollIntoView({block:"nearest",behavior:"smooth"});
     }
    }
    if(action==="schedule-parse"){
