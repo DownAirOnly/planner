@@ -88,21 +88,37 @@ function unique(rows){const seen=new Set();return rows.filter(e=>{
 function countRanges(text){return String(text||"").split(/\r?\n/).reduce((n,line)=>n+(timeRange(line)?1:0),0);}
 function parseText(raw,domain,year,month){
  const lines=String(raw||"").split(/\r?\n/).map(clean).filter(Boolean).slice(0,500);
- const ctx=context(raw,year,month),results=[];
+ const ctx=context(raw,year,month),candidates=[];
  for(let i=0;i<lines.length;i++){
-  const t=timeRange(lines[i]);
-  if(!t)continue;
+  const t=timeRange(lines[i]);if(!t)continue;
   const prefix=lines[i].slice(0,t.index).trim();
-  let date=rowDate(prefix,lines,i,ctx);
-  if(!date)continue;
-  // Only consume descriptions until the next day label / shift.
+  const date=rowDate(prefix,lines,i,ctx);
   let description=lines[i];
   for(let k=i+1;k<Math.min(lines.length,i+5);k++){
    if(timeRange(lines[k])||dayFromPrefix(lines[k]))break;
    description+=" "+lines[k];
   }
-  results.push(makeEvent(date,t,domain,locationFrom(description,domain)));
+  candidates.push({date,time:t,location:locationFrom(description,domain),estimatedDate:false});
  }
+ // If OCR recognized a time range but lost its date label, propose a nearby
+ // date from neighboring shifts and clearly flag it for review.
+ const move=(iso,days)=>{
+  const [y,m,d]=iso.split("-").map(Number);
+  const dt=new Date(y,m-1,d+days);
+  return dateIso(dt.getFullYear(),dt.getMonth()+1,dt.getDate());
+ };
+ for(let i=0;i<candidates.length;i++){
+  if(candidates[i].date)continue;
+  let prev=i-1;while(prev>=0&&!candidates[prev].date)prev--;
+  let next=i+1;while(next<candidates.length&&!candidates[next].date)next++;
+  let guessed="";
+  if(prev>=0)guessed=move(candidates[prev].date,i-prev);
+  else if(next<candidates.length)guessed=move(candidates[next].date,i-next);
+  if(guessed){candidates[i].date=guessed;candidates[i].estimatedDate=true;}
+ }
+ const results=candidates.filter(row=>row.date).map(row=>({
+  ...makeEvent(row.date,row.time,domain,row.location),estimatedDate:row.estimatedDate
+ }));
  return unique(results).slice(0,100);
 }
 function wordsFromTsv(tsv){
