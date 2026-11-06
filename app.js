@@ -242,8 +242,14 @@
     const file=event.target.files?.[0];if(!file)return;
     try{
       if(file.size>5*1024*1024)throw new Error("File is too large (5 MB maximum).");
-      const restored=normalize(JSON.parse(await file.text()));
-      if(!confirm("Replace ALL current data (including calendar events) with this backup? It includes "+restored.projects.length+" projects, "+restored.tasks.length+" tasks, "+restored.ideas.length+" ideas, and "+restored.events.length+" events. Export your existing data first."))return;
+      const incoming=JSON.parse(await file.text());
+      const restored=normalize(incoming);
+      if(!Array.isArray(incoming.events) && data.events.length){
+        if(confirm("This older backup has no calendar events. Keep your "+data.events.length+" existing events?")){
+          restored.events=data.events;
+        }
+      }
+      if(!confirm("Replace ALL other current data with this backup? It includes "+restored.projects.length+" projects, "+restored.tasks.length+" tasks, "+restored.ideas.length+" ideas, and "+restored.events.length+" calendar events. Export a backup first."))return;
       data=restored;if(save()){closeSheet();switchTab("home");toast("Backup imported");}
     }catch(err){alert("Could not import: "+err.message);}
     finally{event.target.value="";}
