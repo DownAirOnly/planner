@@ -12,6 +12,7 @@
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon.svg">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./schedule.css">
   <title>Command — Personal Dashboard</title>
 </head>
 <body>
@@ -26,14 +27,15 @@
     <main id="screen" aria-live="polite"></main>
     <nav class="tabbar" aria-label="Main navigation">
       <button class="tab active" data-action="tab" data-view="home"><svg class="icon"><use href="./icons.svg#home"></use></svg><span>Home</span></button>
+      <button class="tab" data-action="tab" data-view="schedule"><svg class="icon"><use href="./icons.svg#calendar"></use></svg><span>Schedule</span></button>
       <button class="tab" data-action="tab" data-view="projects"><svg class="icon"><use href="./icons.svg#folder"></use></svg><span>Projects</span></button>
       <button class="tab" data-action="tab" data-view="tasks"><svg class="icon"><use href="./icons.svg#check"></use></svg><span>Tasks</span></button>
-      <button class="tab" data-action="tab" data-view="ideas"><svg class="icon"><use href="./icons.svg#bulb"></use></svg><span>Ideas</span></button>
     </nav>
   </div>
   <div id="overlay"></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <input id="import-file" type="file" accept=".json,application/json" hidden>
+  <script src="./schedule.js" defer></script>
   <script src="./app.js" defer></script>
 </body>
 </html>
