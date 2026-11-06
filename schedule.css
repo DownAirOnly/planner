@@ -127,3 +127,6 @@
 .schedule-review-empty p{margin:0;font-size:12px;color:var(--muted);line-height:1.5}
 .schedule-review-empty .button{justify-self:start}
 @media(max-width:420px){.schedule-import-actions{flex-direction:column}.schedule-import-actions .button{width:100%}.schedule-proposed-row{padding:12px}}
+
+.schedule-estimated-date{color:var(--amber)!important;font-weight:680}
+.schedule-row-editor .button{margin-top:4px}
