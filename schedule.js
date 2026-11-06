@@ -156,13 +156,14 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
     '<p class="schedule-hint">Check the shifts, then save. Tap Edit to change anything.</p>'+
     '<form id="schedule-import-form"><div class="schedule-import-preview">'+found.map((row,i)=>{
       const duplicate=existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
-      const needsEdit=!row.startTime||!row.endTime;
+      const needsEdit=!row.startTime||!row.endTime||!!row.estimatedDate;
       const time=fmtTime(row);
       return '<div class="schedule-proposed-row" data-review-row="'+i+'">'+
         '<div class="schedule-proposed-top"><label class="schedule-proposed-check"><input type="checkbox" name="include-'+i+'" '+(duplicate||row._include===false?"":"checked")+' aria-label="Include shift '+(i+1)+'">'+
           '<span class="schedule-proposed-main"><strong>'+esc(labelDate(row.date))+'</strong>'+
             '<span>'+esc(time||"Time needs review")+'</span>'+
             (row.location?'<small>'+esc(row.location)+'</small>':"")+
+            (row.estimatedDate?'<small class="schedule-estimated-date">Date estimated — check</small>':"")+
           '</span></label>'+
           '<button type="button" class="schedule-row-edit" data-action="schedule-review-toggle" data-index="'+i+'" aria-expanded="'+(needsEdit?"true":"false")+'">Edit</button></div>'+
         (duplicate?'<div class="schedule-duplicate-note">Already saved — unchecked</div>':"")+
@@ -208,6 +209,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
       const v=new FormData(form), row=ui.workingImport?.rows[index];
       if(row){
         const date=parseIso(v.get("date-"+index))||row.date;
+        row.estimatedDate=false;
         const time=fmtTime({...row,startTime:String(v.get("start-"+index)||""),endTime:String(v.get("end-"+index)||"")});
         const root=document.querySelector('[data-review-row="'+index+'"]');
         if(root){
