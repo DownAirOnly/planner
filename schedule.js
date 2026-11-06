@@ -196,7 +196,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
    const texts=[],detected=[];
    for(let i=0;i<files.length;i++){
     status.textContent="Reading screenshot "+(i+1)+" of "+files.length+"…";
-    const result=await worker.recognize(files[i],{}, {tsv:true});
+    const result=await worker.recognize(files[i],{}, {text:true,tsv:true});
      const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
      const activeDomain=document.querySelector("#import-domain")?.value||"work";
      const spatial=window.CommandImportParser.parseTsv(result.data?.tsv||"",result.data?.text||"",activeDomain,yr,mo);
