@@ -11,7 +11,8 @@
   const today = () => { const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
   const niceDate = (s) => { if(!s)return ""; const d=new Date(s+"T12:00:00"); return Number.isNaN(d.getTime()) ? String(s) : d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:d.getFullYear()===new Date().getFullYear()?undefined:"numeric"});};
   const defaults = () => ({
-    schemaVersion:1,
+    schemaVersion:2,
+    events:[],
     projects:[
       {id:"everyday",title:"Everyday",category:"Software",status:"active",description:"Fitness, nutrition, and finance PWA.",next:"Finalize Workout Buddy's approved exercise swaps.",reviewDate:"",updatedAt:"2026-11-06"},
       {id:"botanica",title:"Botanica",category:"Software",status:"active",description:"Herbal inventory and order management.",next:"Run an end-to-end inventory workflow audit.",reviewDate:"",updatedAt:"2026-11-06"},
@@ -44,11 +45,13 @@
     });
     const tasks=obj.tasks.slice(0,2500).map((t)=>({id:cleanText(t.id)||uid(),title:cleanText(t.title)||"Untitled task",projectId:projectIds.has(t.projectId)?t.projectId:"",status:["open","in_progress","waiting","blocked","done"].includes(t.status)?t.status:"open",priority:["high","medium","low"].includes(t.priority)?t.priority:"medium",dueDate:cleanText(t.dueDate),notes:cleanText(t.notes)}));
     const ideas=obj.ideas.slice(0,1000).map((i)=>({id:cleanText(i.id)||uid(),title:cleanText(i.title)||"Untitled idea",description:cleanText(i.description),createdAt:cleanText(i.createdAt)}));
-    return {schemaVersion:1,projects,tasks,ideas};
+    const events=(Array.isArray(obj.events)?obj.events:[]).slice(0,4000).filter(e=>e&&typeof e==="object").map(e=>window.CommandSchedule.validate(e)).filter(e=>e.date);
+    return {schemaVersion:2,projects,tasks,ideas,events};
   };
   let data;
   try { const stored=localStorage.getItem(KEY); data=stored?normalize(JSON.parse(stored)):defaults(); } catch(err){console.warn("Stored data could not be loaded.",err);data=defaults();}
   const state={view:"home",projectId:null,taskFilter:"open",query:""};
+  const schedule=window.CommandSchedule.create({getEvents:()=>data.events,updateEvents:(next)=>{data.events=next;save();render();},showSheet:(body)=>showSheet(body),closeSheet:()=>closeSheet(),toast:(message)=>toast(message),openSchedule:(scroll=true)=>{state.view="schedule";state.projectId=null;render();if(scroll)window.scrollTo({top:0,behavior:"instant"});}});
   function save(){
     try{localStorage.setItem(KEY,JSON.stringify(data));return true;}
     catch(err){alert("Could not save on this device. Export a backup before continuing.");console.error(err);return false;}
@@ -87,17 +90,16 @@
     const remaining=data.tasks.filter(t=>t.status!=="done").sort(taskSort);
     const active=data.projects.filter(p=>p.status==="active");
     const todayHeader=new Date().toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric"});
-    return '<p class="eyebrow">'+escapeHtml(todayHeader)+'</p><h1 class="page-title">Know what’s next.</h1><p class="page-description">One place for the things you’re doing, finishing, and saving for later.</p>'+
-      '<div class="stats"><div class="stat"><div class="stat-value">'+remaining.length+'</div><div class="stat-label">Open tasks</div></div><div class="stat"><div class="stat-value">'+active.length+'</div><div class="stat-label">Active projects</div></div><div class="stat"><div class="stat-value">'+data.ideas.length+'</div><div class="stat-label">Saved ideas</div></div></div>'+
-      '<section class="section"><div class="section-head"><h2>Next up</h2><button class="subtle-link" data-action="tab" data-view="tasks">All tasks '+icon("arrow","tiny")+'</button></div>'+
-      (remaining.length?'<div class="task-list">'+remaining.slice(0,4).map(taskRow).join("")+'</div>':empty("Nothing urgent","Add a task when there's something to take care of."))+
-      '</section><section class="section"><div class="section-head"><h2>Active projects</h2><button class="subtle-link" data-action="tab" data-view="projects">View projects '+icon("arrow","tiny")+'</button></div>'+
-      (active.length?'<div class="project-grid">'+active.slice(0,4).map(projectCard).join("")+'</div>':empty("No active projects","Create a project to keep the next steps together."))+'</section>'+
-      '<div class="banner">Changes save on this device. Export a backup in Settings. Cloud sync is not connected yet.</div>';
+    return '<p class="eyebrow">'+escapeHtml(todayHeader)+'</p><h1 class="page-title">Overview</h1>'+
+      schedule.homeSummary()+
+      '<section class="section"><div class="section-head"><h2>Needs attention</h2><button class="subtle-link" data-action="tab" data-view="tasks">All tasks '+icon("arrow","tiny")+'</button></div>'+
+      (remaining.length?'<div class="task-list">'+remaining.slice(0,3).map(taskRow).join("")+'</div>':empty("All caught up","No open tasks."))+'</section>'+
+      '<section class="section"><div class="section-head"><h2>Projects</h2><button class="subtle-link" data-action="tab" data-view="projects">All projects '+icon("arrow","tiny")+'</button></div>'+
+      (active.length?'<div class="project-summary-list">'+active.slice(0,4).map(p=>'<button data-action="project-detail" data-id="'+escapeHtml(p.id)+'" class="project-summary-row"><span class="project-summary-name">'+escapeHtml(p.title)+'</span><span class="project-summary-next">'+escapeHtml(p.next||"No next step yet")+'</span>'+icon("chevron-right","tiny")+'</button>').join("")+'</div>':empty("No active projects","Add a project when there's something to track."))+'</section>';
   }
   function empty(title,detail){return '<div class="empty"><strong>'+escapeHtml(title)+'</strong><p>'+escapeHtml(detail)+'</p></div>';}
   function projects(){
-    return '<div class="page-heading"><div><p class="eyebrow">The bigger picture</p><h1 class="page-title">Projects</h1><p class="description">One next step for every moving piece.</p></div><button class="button" data-action="edit" data-kind="project">'+icon("plus")+' Add</button></div>'+
+    return '<div class="page-heading"><div><h1 class="page-title">Projects</h1></div><div class="action-row"><button class="button secondary" data-action="open-ideas">'+icon("bulb")+' Ideas</button><button class="button" data-action="edit" data-kind="project">'+icon("plus")+' Add</button></div></div>'+
     (data.projects.length?'<div class="project-grid">'+[...data.projects].sort((a,b)=>({active:0,waiting:1,blocked:2,parked:3,done:4}[a.status]-{active:0,waiting:1,blocked:2,parked:3,done:4}[b.status])).map(projectCard).join("")+'</div>':empty("No projects","Add your first project."));
   }
   function projectDetail(){
@@ -128,12 +130,12 @@
   }
   function taskResults(){const all=filteredTasks();return all.length?'<div class="task-list">'+all.map(taskRow).join("")+'</div>':empty("No matching tasks","Try a different filter or add something new.");}
   function ideas(){
-    return '<div class="page-heading"><div><p class="eyebrow">Not for today</p><h1 class="page-title">Ideas</h1><p class="description">Keep good possibilities without turning them into obligations.</p></div><button class="button" data-action="edit" data-kind="idea">'+icon("plus")+' Add</button></div>'+
+    return '<button class="back" data-action="tab" data-view="projects">'+icon("chevron-left","tiny")+' Projects</button><div class="page-heading"><div><h1 class="page-title">Ideas</h1></div><button class="button" data-action="edit" data-kind="idea">'+icon("plus")+' Add</button></div>'+
       (data.ideas.length?data.ideas.map(i=>'<div class="card"><div class="idea-card"><div class="idea-symbol">'+icon("bulb")+'</div><div style="flex:1;min-width:0"><div class="card-row"><h2 class="card-title">'+escapeHtml(i.title)+'</h2><button class="task-edit" data-action="edit" data-kind="idea" data-id="'+escapeHtml(i.id)+'" aria-label="Edit idea">'+icon("more")+'</button></div><p class="card-desc">'+escapeHtml(i.description||"No details yet.")+'</p><button class="subtle-link" style="margin-top:10px" data-action="promote-idea" data-id="'+escapeHtml(i.id)+'">Turn into project '+icon("arrow","tiny")+'</button></div></div></div>').join(""):empty("No saved ideas","Save an idea here when it's not a priority yet."));
   }
   function render(){
-    $(".tabbar").querySelectorAll(".tab").forEach(btn=>{const selected=btn.dataset.view===state.view;btn.classList.toggle("active",selected);btn.setAttribute("aria-current",selected?"page":"false");});
-    screen.innerHTML=state.view==="home"?home():state.view==="projects"?(state.projectId?projectDetail():projects()):state.view==="tasks"?tasks():ideas();
+    $(".tabbar").querySelectorAll(".tab").forEach(btn=>{const selected=btn.dataset.view===(state.view==="ideas"?"projects":state.view);btn.classList.toggle("active",selected);btn.setAttribute("aria-current",selected?"page":"false");});
+    screen.innerHTML=state.view==="home"?home():state.view==="schedule"?schedule.render():state.view==="projects"?(state.projectId?projectDetail():projects()):state.view==="tasks"?tasks():ideas();
   }
   const opt=(value,label,selected)=>'<option value="'+escapeHtml(value)+'" '+(value===selected?"selected":"")+'>'+escapeHtml(label)+'</option>';
   function textField(label,name,value,required=false,type="text"){
@@ -177,7 +179,7 @@
       '<div class="settings-group"><h3>Saved on this device</h3><p>Everything is stored in this browser. There is no account or cloud synchronization yet. Clearing browser website data can erase your changes.</p></div>'+
       '<div class="settings-group"><h3>Back up your data</h3><p>Export a JSON file before switching phones, clearing browser data, or making significant changes.</p><button class="button" data-action="export">'+icon("download")+' Export backup</button><button class="button secondary" data-action="import">'+icon("upload")+' Import backup</button></div>'+
       '<div class="settings-group"><h3>Reset starter data</h3><p>Replace your local data with the original starter projects. Export first if you want to keep your current work.</p><button class="button danger" data-action="reset">'+icon("trash")+' Reset data</button></div>'+
-      '<div class="settings-group"><h3>About</h3><p>Command v1 · Offline-ready personal project and task tracker. Your imported data is never uploaded by this app.</p></div>');
+      '<div class="settings-group"><h3>About</h3><p>Command v2 · Projects and calendar. Local storage only; no account sync. Screenshot recognition happens in your browser.</p></div>');
   }
   function exportData(){
     const text=JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2);
@@ -189,6 +191,8 @@
   document.addEventListener("click",(event)=>{
     const button=event.target.closest("[data-action]");if(!button)return;
     const action=button.dataset.action,id=button.dataset.id,kind=button.dataset.kind;
+    if(schedule.handleAction(button))return;
+    if(action==="open-ideas"){switchTab("ideas");return;}
     if(action==="backdrop"){if(event.target===button)closeSheet();return;}
     if(action==="tab"){closeSheet();switchTab(button.dataset.view);return;}
     if(action==="settings"){settings();return;}
@@ -214,10 +218,12 @@
     if(action==="import"){importInput.click();return;}
     if(action==="reset"){if(confirm("Reset ALL data on this device to the starter list? Export a backup first. This cannot be undone.")){data=defaults();save();closeSheet();switchTab("home");toast("Starter data restored");}return;}
   });
+  document.addEventListener("change",(event)=>{schedule.handleInput(event.target);});
   document.addEventListener("input",(event)=>{
     if(event.target.id==="task-search"){state.query=event.target.value;const results=$("#task-results");if(results)results.innerHTML=taskResults();}
   });
   document.addEventListener("submit",(event)=>{
+    if(event.target.id==="schedule-event-form"||event.target.id==="schedule-import-form"){event.preventDefault();schedule.handleSubmit(event.target);return;}
     if(event.target.id!=="editor-form")return;event.preventDefault();
     const form=event.target,kind=form.dataset.kind,id=form.dataset.id;
     const values=Object.fromEntries(new FormData(form).entries());
@@ -237,7 +243,7 @@
     try{
       if(file.size>5*1024*1024)throw new Error("File is too large (5 MB maximum).");
       const restored=normalize(JSON.parse(await file.text()));
-      if(!confirm("Replace all current Command data with "+restored.projects.length+" projects, "+restored.tasks.length+" tasks, and "+restored.ideas.length+" ideas from this file? Export your current data first."))return;
+      if(!confirm("Replace ALL current data (including calendar events) with this backup? It includes "+restored.projects.length+" projects, "+restored.tasks.length+" tasks, "+restored.ideas.length+" ideas, and "+restored.events.length+" events. Export your existing data first."))return;
       data=restored;if(save()){closeSheet();switchTab("home");toast("Backup imported");}
     }catch(err){alert("Could not import: "+err.message);}
     finally{event.target.value="";}
