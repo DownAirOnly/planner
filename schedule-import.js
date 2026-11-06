@@ -43,7 +43,7 @@ function explicitDate(s,ctx){
  return "";
 }
 function dayFromPrefix(raw){
- const str=clean(raw).replace(/[↔⇆↪<>|&]+/g," ").trim();
+ const str=clean(raw).replace(/[^A-Za-z0-9]+/g," ").trim();
  // Only accept a short weekday/day label, never an arbitrary number in a description.
  const m=str.match(/^(?:(Sun(?:day)?|Mon(?:day)?|Tue(?:s(?:day)?)?|Wed(?:nesday)?|Thu(?:rs?(?:day)?)?|Fri(?:day)?|Sat(?:urday)?)\.?\s*)?([1-9]|[12]\d|3[01])(?:\s*[.:,])?$/i);
  if(!m)return null;
