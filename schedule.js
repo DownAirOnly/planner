@@ -217,7 +217,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
     importPreview();
    }
   }catch(err){status.textContent=err.message||"Could not read the image. Try Live Text in Photos.";}
-  finally{if(worker)try{await worker.terminate();}catch(e){} if(button)button.disabled=false;if(input)input.value="";}
+  finally{if(worker)try{await worker.terminate();}catch(e){} if(button)button.disabled=false;}
  }
  function handleAction(b){
   const action=b.dataset.action;
