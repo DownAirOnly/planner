@@ -173,13 +173,13 @@
     setTimeout(()=>{$("#field-title")?.focus();},30);
   }
   function showSheet(content){overlay.innerHTML='<div class="overlay" data-action="backdrop"><div class="sheet" role="dialog" aria-modal="true" aria-label="Command editor">'+content+'</div></div>';document.body.style.overflow="hidden";}
-  function closeSheet(){overlay.innerHTML="";document.body.style.overflow="";}
+  function closeSheet(){overlay.innerHTML="";document.body.style.overflow="";if(window.__commandUpdatePending){window.__commandUpdatePending=false;window.location.reload();}}
   function settings(){
     showSheet('<div class="sheet-head"><h2 class="sheet-title">Settings & backup</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+icon("x")+'</button></div>'+
       '<div class="settings-group"><h3>Saved on this device</h3><p>Everything is stored in this browser. There is no account or cloud synchronization yet. Clearing browser website data can erase your changes.</p></div>'+
       '<div class="settings-group"><h3>Back up your data</h3><p>Export a JSON file before switching phones, clearing browser data, or making significant changes.</p><button class="button" data-action="export">'+icon("download")+' Export backup</button><button class="button secondary" data-action="import">'+icon("upload")+' Import backup</button></div>'+
       '<div class="settings-group"><h3>Reset starter data</h3><p>Replace your local data with the original starter projects. Export first if you want to keep your current work.</p><button class="button danger" data-action="reset">'+icon("trash")+' Reset data</button></div>'+
-      '<div class="settings-group"><h3>About</h3><p>Command v2 · Projects and calendar. Local storage only; no account sync. Screenshot recognition happens in your browser.</p></div>');
+      '<div class="settings-group"><h3>About</h3><p>Command v4 · Projects and calendar. Local storage only; no account sync. Screenshot recognition happens in your browser.</p></div>');
   }
   function exportData(){
     const text=JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2);
@@ -256,5 +256,17 @@
   });
   document.addEventListener("keydown",(event)=>{if(event.key==="Escape"&&overlay.firstChild)closeSheet();});
   render();
-  if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch((err)=>console.warn("Offline cache unavailable",err)));
+  if("serviceWorker" in navigator){
+    navigator.serviceWorker.addEventListener("controllerchange",()=>{
+      if(overlay.firstElementChild){window.__commandUpdatePending=true;toast("App update ready — finish editing to reload");}
+      else window.location.reload();
+    });
+    window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js",{updateViaCache:"none"})
+      .then(registration=>registration.update().catch(()=>{}))
+      .catch(err=>console.warn("Offline cache unavailable",err)));
+    document.addEventListener("visibilitychange",()=>{
+      if(document.visibilityState==="visible")navigator.serviceWorker.getRegistration()
+        .then(registration=>registration?.update()).catch(()=>{});
+    });
+  }
 })();
