@@ -1,35 +1,32 @@
 # Command
 
-A simple installable command center for tracking projects, tasks, ideas, and unfinished work.
+Personal dashboard with separate work, school, and personal calendars; projects, tasks, and ideas.
 
-## What works
+## Command v2
 
-- Home dashboard, project cards, task list, and idea parking lot
-- Add, edit, complete, and delete tasks
-- Add and edit projects with status, category, next step, and review date
-- Link tasks to projects, assign priorities and optional due dates
-- Filter and search tasks, promote an idea to a project
-- Export and import your data as JSON
-- Mobile-first layout and offline caching after initial load
+- **Home:** concise overview of next work shift, next class, tasks, and projects. Work and school summaries remain separate.
+- **Schedule:** dedicated tab with Work, School, Personal, and optional All filters. Day, week, and month calendars. No automatic mixing between domains.
+- **Events:** create and edit timed or all-day events. Support for repeated weekly classes, weekdays, and an optional series end date. Editing a repeated event changes the series.
+- **Import schedule:** paste extracted text from Photos/Live Text, or choose one or more screenshots and use local-browser OCR. Review and correct detected dates and times before saving. Detection is intentionally conservative. Some formats need manual adjustment.
+- **Projects, Tasks, Ideas:** remain editable; Ideas is accessible in Projects.
+- **JSON backup:** exports calendar events as well as projects, tasks, and ideas. Existing v1 backups can still be read but have no calendar events.
 
-## Data and privacy
+## Important privacy and data notes
 
-**Version 1 is local-first.** Changes are saved to your current browser using localStorage, not Firebase. There is **no account login, cross-device synchronization, or cloud backup**. Clearing website data may remove your work. Use Settings → Export backup to save JSON and Settings → Import backup to restore it.
+Command uses browser localStorage **on this device only**. It does not have Firebase, account login, cloud backup, notifications, or cross-device sync yet. Clearing site data can erase your saved records. Use Settings → Export backup before significant changes. Import **replaces everything**, including calendar events.
 
-The starter list includes the names of a few publicly visible development projects. It does not contain personal health or payment records. Do not put secrets into the public repository.
+The browser OCR uses **Tesseract.js v7** loaded from a CDN on demand and reads the image locally on the device. Language/worker assets are downloaded from external CDNs. The selected screenshots themselves are not uploaded to a Command server and are not stored after OCR. You can instead paste copied text to avoid using OCR. OCR may be slow and cannot reliably interpret every screenshot layout; always review imported events.
 
-## Publish with GitHub Pages
+Only general starter information belongs in this public repository. Personal schedules, health information, and financial records should not be committed to git.
 
-The deployment workflow is in `.github/workflows/pages.yml`.
+## Deployment
 
-1. Open [Settings → Pages](https://github.com/DownAirOnly/planner/settings/pages).
-2. Under **Build and deployment**, select **GitHub Actions** as the Source.
-3. The next push to `main` runs deployment, or rerun **Deploy Command to GitHub Pages** from the Actions tab.
+GitHub Pages is configured through `.github/workflows/pages.yml` to deploy when main changes.
 
-When deployed, the URL is: https://downaironly.github.io/planner/
+App: https://downaironly.github.io/planner/
 
-On iPhone open the link in Safari → Share → Add to Home Screen. No backend or build step is required.
+On iPhone, open in Safari and choose Share → Add to Home Screen. The app's standard pages work offline after an initial load; the screenshot text reader may need internet to fetch its OCR engine.
 
-## Planned
+## Next
 
-Cloud synchronization (Firebase), import of structured ChatGPT handoffs, optional project reviews and reminders.
+Improve schedule parsing for actual screenshots, exceptions to recurring events, Firebase Authentication and Firestore sync, and reviewed ChatGPT handoffs.
