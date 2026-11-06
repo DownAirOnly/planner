@@ -1,8 +1,13 @@
 # Command
 
+## v4 screenshot import
+
+Screenshot import now opens a compact **proposed schedule** with one line per detected shift and an **Edit** button for each. The unprocessed OCR text is hidden in **Other import options**. Month headings and split day-number columns are supported; when OCR loses a date, the app can estimate a neighboring date and marks it for review. Time ranges crossing midnight show **next day**. Always review suggestions before saving.
+
+
 Personal dashboard with separate work, school, and personal calendars; projects, tasks, and ideas.
 
-## Command v2
+## Command v4
 
 - **Home:** concise overview of next work shift, next class, tasks, and projects. Work and school summaries remain separate.
 - **Schedule:** dedicated tab with Work, School, Personal, and optional All filters. Day, week, and month calendars. No automatic mixing between domains.
