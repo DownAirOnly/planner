@@ -158,10 +158,10 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
    return null;
  }
  function homeSummary(){
-   const domains=["work","school"];
-   return '<section class="section"><div class="section-head"><h2>Schedule</h2><button class="subtle-link" data-action="schedule-jump" data-domain="work">Calendar '+ic("arrow","tiny")+'</button></div><div class="schedule-home-grid">'+domains.map(domain=>{
-    const next=nextEvent(domain),heading=domain==="work"?"Next shift":"Next class";
-    return '<button class="schedule-home-item" data-action="schedule-jump" data-domain="'+domain+'"><span class="schedule-tag '+domain+'">'+(domain==="work"?"Work":"School")+'</span><span class="schedule-home-heading">'+heading+'</span><span class="schedule-home-primary">'+(next?esc(labelDate(next.occurrenceDate)):"Nothing scheduled")+'</span><span class="schedule-home-secondary">'+(next?esc(fmtTime(next)+(workMeta(next)?" · "+workMeta(next):"")):(domain==="work"?"Add your work schedule":"Add your class schedule"))+'</span></button>';
+   const domains=["work","school","personal"];
+   return '<section class="section"><div class="section-head"><h2>Coming up</h2><button class="subtle-link" data-action="schedule-jump" data-domain="work">Calendar '+ic("arrow","tiny")+'</button></div><div class="schedule-home-grid">'+domains.map(domain=>{
+    const next=nextEvent(domain),heading=domain==="work"?"Next shift":domain==="school"?"Next class":"Next plan";
+    return '<button class="schedule-home-item" data-action="schedule-jump" data-domain="'+domain+'"><span class="schedule-tag '+domain+'">'+(domain==="work"?"Work":domain==="school"?"School":"Personal")+'</span><span class="schedule-home-heading">'+heading+'</span><span class="schedule-home-primary">'+(next?esc(labelDate(next.occurrenceDate)):"Nothing scheduled")+'</span><span class="schedule-home-secondary">'+(next?esc(fmtTime(next)+(workMeta(next)?" · "+workMeta(next):"")):(domain==="work"?"Add your work schedule":domain==="school"?"Add your class schedule":"Add a personal plan"))+'</span></button>';
    }).join("")+'</div></section>';
  }
  const heading=()=>{

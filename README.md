@@ -1,5 +1,18 @@
 # Command
 
+## v8 — Life areas and chosen priorities
+
+- Navigation: Home, Schedule, Areas, Inbox.
+- Home: pinned Up next items with Move up/Unpin, optional suggestions ranked by due date then priority, active project next steps, and separate upcoming Work/School/Personal commitments.
+- Suggestions can be accepted or dismissed. Restore dismissed suggestions from Inbox. Only confirmed, actionable items are suggested; blocked/waiting/later projects are excluded.
+- Areas: Home, School, Work & career, Health & fitness, Personal, Apps & projects. Direct tasks do not require a project. Items can be tasks, decisions, or follow-ups; ideas remain optional.
+- Capture adds a task to Inbox with one text field. Edit to assign an area, project, kind, status, or optional date.
+- Project blockers show only a Blocker indicator outside the project. Details appear inside the project and editor, and are included in private device exports.
+- Existing data is migrated additively to schema 5. Projects infer areas from prior categories; all older projects/tasks are flagged for review and excluded from automatic Home suggestions until confirmed. No old tasks are assumed completed. Calendar events and work/pay-week behavior are retained.
+- The original pre-v8 local record is retained in `command.pre-v8` as recovery data. Export backups remain the supported way to move data between devices; imports replace data after confirmation.
+- No new personal balance, transcript, or health details are embedded in public source. Enter personal items on your own device.
+
+
 ## v7 — Work and pay week hours
 
 Work scheduling now supports two seven-day groupings:

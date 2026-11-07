@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
+const source=fs.readFileSync('app.js','utf8').split('  let data, loadFailed=false;')[0]+' globalThis.test={normalize,defaults};})();';
+const context={document:{querySelector:()=>({})},window:{CommandSchedule:{validate:e=>e}},console};vm.createContext(context);vm.runInContext(source,context);
+const legacy=context.test.defaults();legacy.schemaVersion=4;legacy.events=[{id:'shift',date:'2026-11-07',breakMinutes:17,domain:'work',startTime:'09:00',endTime:'18:00'}];legacy.schedulePrefs={usualWorkdays:[5,6,0,1,2]};
+const migrated=context.test.normalize(legacy);
+assert.equal(migrated.schemaVersion,5);assert.equal(migrated.projects.length,legacy.projects.length);assert.equal(migrated.tasks.length,legacy.tasks.length);assert.equal(migrated.projects[0].areaId,'apps');assert(migrated.tasks.every(t=>t.needsReview));assert.equal(JSON.stringify(migrated.events),JSON.stringify(legacy.events));assert.equal(JSON.stringify(migrated.schedulePrefs),JSON.stringify(legacy.schedulePrefs));
+migrated.projects[0].areaId='';migrated.projects[0].blocker='Private detail';migrated.projects[0].needsReview=false;migrated.tasks[0].kind='followup';migrated.tasks[0].needsReview=false;migrated.focus=[migrated.tasks[0].id];migrated.dismissed=[migrated.tasks[1].id];
+assert.equal(JSON.stringify(context.test.normalize(migrated)),JSON.stringify(migrated));
+const unversioned={...legacy};delete unversioned.schemaVersion;assert(context.test.normalize(unversioned).tasks.every(t=>t.needsReview));
+console.log('Legacy migration, event/break preservation, and v8 backup round-trip passed.');
