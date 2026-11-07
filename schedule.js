@@ -273,6 +273,27 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
   }).catch(err=>{window.__commandOcrPromise=null;throw err;});
   return window.__commandOcrPromise;
  }
+ async function inspectTopOfScreenshot(file,worker){
+  // A second, enlarged OCR pass can recover the first card when part
+  // of the previous day is clipped or visually close to the month heading.
+  if(typeof createImageBitmap!=="function")return null;
+  let image;
+  try{
+    image=await createImageBitmap(file);
+    const cropHeight=Math.min(image.height,Math.round(image.height*.59));
+    const scale=Math.min(2.2,1800/image.width);
+    const canvas=document.createElement("canvas");
+    canvas.width=Math.round(image.width*scale);
+    canvas.height=Math.round(cropHeight*scale);
+    const ctx=canvas.getContext("2d");
+    if(!ctx)return null;
+    ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.filter="grayscale(100%) contrast(155%)";
+    ctx.drawImage(image,0,0,image.width,cropHeight,0,0,canvas.width,canvas.height);
+    return await worker.recognize(canvas,{}, {text:true,tsv:true});
+  }catch(err){console.warn("Top-of-screenshot scan skipped",err);return null;}
+  finally{image?.close?.();}
+ }
  async function readScreenshots(){
   const input=document.querySelector("#schedule-image-input"),status=document.querySelector("#schedule-ocr-status"),raw=document.querySelector("#schedule-raw-text");
   const files=Array.from(input?.files||[]).filter(f=>f.type.startsWith("image/")).slice(0,5);
@@ -294,6 +315,17 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
      const plain=parseImportedText(result.data?.text||"",activeDomain,yr,mo);
      detected.push(...spatial,...plain);
     texts.push(result.data?.text||"");
+    if(activeDomain==="work"&&i===0&&detected.length>=2&&detected.length<=5){
+      status.textContent="Checking the top of the screenshot for a missing shift…";
+      const top=await inspectTopOfScreenshot(files[i],worker);
+      if(top){
+        const topText=top.data?.text||"";
+        const fromCrop=window.CommandImportParser.parseTsv(top.data?.tsv||"",topText,activeDomain,yr,mo);
+        const fromCropText=parseImportedText(topText,activeDomain,yr,mo);
+        detected.push(...fromCrop,...fromCropText);
+        texts.push(topText);
+      }
+    }
    }
    raw.value=texts.map(t=>t.trim()).filter(Boolean).join("\n");
    const recognized=new Map(detected.map(e=>[[e.domain,e.date,e.startTime,e.endTime].join("|"),e]));
@@ -306,7 +338,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
     const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
     const plain=parseImportedText(draft.raw,draft.domain,yr,mo);
     const merged=new Map([...plain,...draft.ocrRows].map(e=>[[e.domain,e.date,e.startTime,e.endTime].join("|"),e]));
-    draft.rows=[...merged.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
+    draft.rows=window.CommandImportParser.proposeClippedPrevious(draft.raw,[...merged.values()],draft.domain);
     importPreview();
     status.textContent=draft.rows.length+" proposed shift"+(draft.rows.length===1?"":"s")+" ready to review.";
    }
