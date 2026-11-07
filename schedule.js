@@ -13,6 +13,30 @@ const fullDate=s=>{const d=fromDate(s);return d?d.toLocaleDateString(undefined,{
 const clock=t=>{if(!t)return"";const bits=t.split(":");let h=+bits[0];return (h%12||12)+":"+bits[1]+" "+(h>=12?"PM":"AM");};
 const uid=()=>crypto&&crypto.randomUUID?crypto.randomUUID():"event-"+Date.now()+"-"+Math.floor(Math.random()*99999);
 const fmtTime=e=>e.allDay?"All day":[clock(e.startTime),clock(e.endTime)].filter(Boolean).join("–")+(e.startTime&&e.endTime&&e.endTime<e.startTime?" (next day)":"");
+
+const ASSIGNMENTS=[["","Not set"],["lead","Lead"],["zones","Zones"],["rtc","RTC"],["detail","Detail"],["other","Other"]];
+const ZONE_COLORS=[["","Choose zone"],["red","Red Zone"],["orange","Orange Zone"],["yellow","Yellow Zone"],["green","Green Zone"],["blue","Blue Zone"],["purple","Purple Zone"]];
+const PARKS=[["IOA","Islands of Adventure"],["USF","Universal Studios Florida"],["CityWalk","CityWalk"],["Other","Other"]];
+const assignmentLabel=e=>e.assignment==="zones"?(ZONE_COLORS.find(x=>x[0]===e.zoneColor)?.[1]||"Zones"):(ASSIGNMENTS.find(x=>x[0]===e.assignment)?.[1]||"");
+const displayLocation=e=>{
+ const loc=String(e.location||"").replace(/^IOA\s*[·/-]\s*/i,"").trim();
+ const park=e.park||(/^(?:IOA|USF|CityWalk)\b/.exec(e.location||"")?.[0])||"IOA";
+ if(e.domain!=="work")return loc;
+ return park==="IOA"?loc:[park,loc].filter(Boolean).join(" · ");
+};
+const workMeta=e=>{const assignment=assignmentLabel(e),area=displayLocation(e);return [assignment,area].filter(Boolean).join(" · ");};
+const zoneStyle=e=>e.assignment==="zones"&&ZONE_COLORS.some(x=>x[0]===e.zoneColor)?' zone-'+e.zoneColor:"";
+const options=(arr,value)=>arr.map(([key,label])=>'<option value="'+esc(key)+'" '+(key===value?"selected":"")+'>'+esc(label)+'</option>').join("");
+function workFields(e,prefix){
+ const val=(key)=>esc(e[key]||"");
+ return '<div class="work-fields">'+
+  '<div class="field"><label>What am I doing?</label><select name="'+prefix+'assignment" class="work-assignment-select">'+options(ASSIGNMENTS,e.assignment||"")+'</select></div>'+
+  '<div class="field work-zone-field" '+(e.assignment==="zones"?"":"hidden")+'><label>Zone color</label><select name="'+prefix+'zoneColor">'+options(ZONE_COLORS,e.zoneColor||"")+'</select></div>'+
+  '<div class="form-grid"><div class="field"><label>Park</label><select name="'+prefix+'park">'+options(PARKS,e.park||"IOA")+'</select></div>'+
+  '<div class="field"><label>Area (optional)</label><input name="'+prefix+'location" value="'+esc(displayLocation({...e,park:"IOA"}))+'" placeholder="Lost Continent"></div></div>'+
+ '</div>';
+}
+
 const keyDate=d=>d.getDay();
 function visibleOnDate(e,iso){
  if(!e||!iso||!e.date||iso<e.date)return false;
@@ -69,7 +93,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
    const domains=["work","school"];
    return '<section class="section"><div class="section-head"><h2>Schedule</h2><button class="subtle-link" data-action="schedule-jump" data-domain="work">Calendar '+ic("arrow","tiny")+'</button></div><div class="schedule-home-grid">'+domains.map(domain=>{
     const next=nextEvent(domain),heading=domain==="work"?"Next shift":"Next class";
-    return '<button class="schedule-home-item" data-action="schedule-jump" data-domain="'+domain+'"><span class="schedule-tag '+domain+'">'+(domain==="work"?"Work":"School")+'</span><span class="schedule-home-heading">'+heading+'</span><span class="schedule-home-primary">'+(next?esc(labelDate(next.occurrenceDate)):"Nothing scheduled")+'</span><span class="schedule-home-secondary">'+(next?esc(fmtTime(next)+(next.location?" · "+next.location:"")):(domain==="work"?"Add your work schedule":"Add your class schedule"))+'</span></button>';
+    return '<button class="schedule-home-item" data-action="schedule-jump" data-domain="'+domain+'"><span class="schedule-tag '+domain+'">'+(domain==="work"?"Work":"School")+'</span><span class="schedule-home-heading">'+heading+'</span><span class="schedule-home-primary">'+(next?esc(labelDate(next.occurrenceDate)):"Nothing scheduled")+'</span><span class="schedule-home-secondary">'+(next?esc(fmtTime(next)+(workMeta(next)?" · "+workMeta(next):"")):(domain==="work"?"Add your work schedule":"Add your class schedule"))+'</span></button>';
    }).join("")+'</div></section>';
  }
  const heading=()=>{
@@ -105,7 +129,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
  function eventRows(){
   const selected=selectedEvents(ui.selected);
   return '<section class="section schedule-agenda"><div class="section-head"><h2>'+esc(fullDate(ui.selected))+'</h2><span class="muted">'+selected.length+' event'+(selected.length===1?"":"s")+'</span></div>'+
-   (selected.length?'<div class="schedule-event-list">'+selected.map(e=>'<button class="schedule-event '+e.domain+'" data-action="schedule-edit" data-id="'+esc(e.id)+'"><span class="schedule-event-line"></span><span class="schedule-event-body"><span class="schedule-event-title">'+esc(e.title)+'</span><span class="schedule-event-time">'+esc(fmtTime(e)+(e.location?" · "+e.location:""))+'</span></span>'+ic("chevron-right")+'</button>').join("")+'</div>':
+   (selected.length?'<div class="schedule-event-list">'+selected.map(e=>'<button class="schedule-event '+e.domain+'" data-action="schedule-edit" data-id="'+esc(e.id)+'"><span class="schedule-event-line"></span><span class="schedule-event-body"><span class="schedule-event-title">'+esc(e.title)+'</span><span class="schedule-event-time">'+esc(fmtTime(e)+(e.domain==="work"?(workMeta(e)?" · "+workMeta(e):""):(e.location?" · "+e.location:"")))+'</span></span>'+ic("chevron-right")+'</button>').join("")+'</div>':
    '<div class="empty"><strong>No '+(ui.domain==="all"?"events":DOMAINS[ui.domain].label.toLowerCase()+" events")+' scheduled</strong><p>Add an event or import a schedule.</p></div>')+'</section>';
  }
  function render(){
@@ -125,7 +149,8 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
    '<div class="form-grid"><div class="field"><label for="ev-domain">Calendar</label><select id="ev-domain" name="domain">'+Object.keys(DOMAINS).map(d=>'<option value="'+d+'" '+(domain===d?"selected":"")+'>'+DOMAINS[d].label+'</option>').join("")+'</select></div><div class="field"><label for="ev-date">Date</label><input id="ev-date" type="date" required name="date" value="'+esc(date)+'"></div></div>'+
    '<div class="form-grid"><div class="field"><label for="ev-start">Start</label><input id="ev-start" type="time" name="startTime" value="'+val("startTime")+'"></div><div class="field"><label for="ev-end">End</label><input id="ev-end" type="time" name="endTime" value="'+val("endTime")+'"></div></div>'+
    '<div class="field"><label class="checkbox-label"><input type="checkbox" name="allDay" '+(item.allDay?"checked":"")+'> All day (no times)</label></div>'+
-   '<div class="field"><label for="ev-location">Location (optional)</label><input id="ev-location" name="location" value="'+val("location")+'"></div>'+
+   '<div id="event-work-fields" '+(domain==="work"?"":"hidden")+'>'+workFields(item,"")+'</div>'+ 
+   '<div class="field event-general-location" '+(domain==="work"?"hidden":"")+'><label for="ev-location">Location (optional)</label><input id="ev-location" name="generalLocation" value="'+val("location")+'"></div>'+
    '<div class="field"><label for="ev-notes">Notes (optional)</label><textarea id="ev-notes" name="notes" rows="2">'+esc(item.notes||"")+'</textarea></div>'+
    '<div class="field"><label for="ev-repeat">Repeat</label><select id="ev-repeat" name="repeat"><option value="none" '+(item.repeat!=="weekly"?"selected":"")+'>Does not repeat</option><option value="weekly" '+(item.repeat==="weekly"?"selected":"")+'>Every week</option></select></div>'+
    '<div class="schedule-repeat-options" id="schedule-repeat-options" '+(item.repeat==="weekly"?"":"hidden")+'><div class="field"><label>On these days</label><div class="weekday-row">'+DAYS.map((d,i)=>'<label class="weekday-check"><input type="checkbox" name="weekday" value="'+i+'" '+((item.weekdays||[fromDate(date)?.getDay()]).includes(i)?"checked":"")+'><span>'+d+'</span></label>').join("")+'</div></div>'+
@@ -334,7 +359,12 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
    if(!allDay&&startTime===endTime){alert("Start and end times cannot be the same.");return true;}
    if(repeat==="weekly"&&!weekdays.length){alert("Select at least one repeat day.");return true;}
    if(until&&until<date){alert("Repeat-until date cannot be before the start date.");return true;}
-   const item={id,domain:String(values.get("domain")),title:String(values.get("title")||"").trim().slice(0,140),date,startTime:allDay?"":startTime,endTime:allDay?"":endTime,allDay,location:String(values.get("location")||"").trim().slice(0,200),notes:String(values.get("notes")||"").trim().slice(0,2000),repeat,weekdays,until};
+   const domain=String(values.get("domain"));
+   const item={id,domain,title:String(values.get("title")||"").trim().slice(0,140),date,startTime:allDay?"":startTime,endTime:allDay?"":endTime,allDay,
+    location:String(values.get(domain==="work"?"location":"generalLocation")||"").trim().slice(0,200),
+    park:domain==="work"?String(values.get("park")||"IOA"):"",assignment:domain==="work"?String(values.get("assignment")||""):"",
+    zoneColor:domain==="work"?String(values.get("zoneColor")||""):"",
+    notes:String(values.get("notes")||"").trim().slice(0,2000),repeat,weekdays,until};
    if(!item.title){alert("Enter a title.");return true;}
    updateEvents(events().some(e=>e.id===id)?events().map(e=>e.id===id?item:e):[...events(),item]);
    ui.selected=date;closeSheet();toast("Event saved");return true;
@@ -362,6 +392,9 @@ window.CommandSchedule={create,validate:(e)=>({
  id:String(e.id||uid()).slice(0,150),domain:Object.hasOwn(DOMAINS,e.domain)?e.domain:"personal",
  title:String(e.title||"Untitled event").slice(0,140),date:parseIso(e.date),startTime:/^\d\d:\d\d$/.test(e.startTime||"")?e.startTime:"",endTime:/^\d\d:\d\d$/.test(e.endTime||"")?e.endTime:"",
  allDay:!!e.allDay,location:String(e.location||"").slice(0,200),notes:String(e.notes||"").slice(0,2000),
+ park:["IOA","USF","CityWalk","Other"].includes(e.park)?e.park:(e.domain==="work"?"IOA":""),
+ assignment:["lead","zones","rtc","detail","other"].includes(e.assignment)?e.assignment:"",
+ zoneColor:["red","orange","yellow","green","blue","purple"].includes(e.zoneColor)?e.zoneColor:"",
  repeat:e.repeat==="weekly"?"weekly":"none",weekdays:Array.isArray(e.weekdays)?e.weekdays.map(Number).filter(n=>n>=0&&n<=6):[],until:parseIso(e.until)
 }),parseImportedText};
 })();
