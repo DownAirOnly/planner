@@ -1,5 +1,13 @@
 # Command
 
+## v6 — Workweek-aware screenshot imports
+
+- Proposed shifts are sorted by date and time, including after a corrected date.
+- Importing overlapping full-image and cropped-image OCR passes no longer presents an unsupported, low-confidence shift outside the usual workweek (such as an invented Wednesday). An explicitly recognized Wednesday remains eligible for review.
+- **Schedule → Work → Usual workdays → Edit** lets you change the default Friday–Tuesday workweek. The choice is saved locally and included in JSON backups. It helps interpret unclear screenshots but never creates shifts by itself.
+- The original screenshot is still the source for scheduled hours; unknown hours remain blank.
+
+
 ## v5 — Work scheduling
 
 - Proposed work shifts include an assignment: **Lead, Zones, RTC, Detail, Other**, or Not set. Zones can be color-coded (red, orange, yellow, green, blue, purple).
