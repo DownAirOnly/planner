@@ -1,5 +1,24 @@
 # Command
 
+## v7 — Work and pay week hours
+
+Work scheduling now supports two seven-day groupings:
+
+- **Work Week:** Friday through Thursday
+- **Pay Week:** Sunday through Saturday
+
+Both use the same saved shifts. Each period shows scheduled hours, planned break deductions, and adjusted hours. The weekly agenda displays daily totals and shift details, including days off. Shifts that run past midnight are assigned to their starting day, without a "next day" label.
+
+Breaks default to:
+- **Up to 6 hours:** 0 minutes
+- **Over 6 hours through 8 hours:** 15 minutes
+- **Over 8 hours:** 30 minutes
+
+Individual shifts can switch to a **manual** break deduction in minutes (including zero), or back to **automatic**. Overrides are saved with events and included in JSON exports/imports. Only the Work calendar uses these hour summaries; School and Personal remain separate.
+
+**Adjusted hours are estimates based on scheduled time and planned breaks, not verified payroll or actual clock punches.**
+
+
 ## v6 — Workweek-aware screenshot imports
 
 - Proposed shifts are sorted by date and time, including after a corrected date.
