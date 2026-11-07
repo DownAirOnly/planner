@@ -354,9 +354,8 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
     draft.raw=raw.value;
     const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
     const plain=parseImportedText(draft.raw,draft.domain,yr,mo);
-    const merged=new Map([...plain,...draft.ocrRows].map(e=>[[e.domain,e.date,e.startTime,e.endTime].join("|"),e]));
     draft.rows=window.CommandImportParser.proposeClippedPrevious(draft.raw,
-      window.CommandImportParser.reconcileRows([...merged.values()],draft.domain,usualWorkdays()),draft.domain);
+      window.CommandImportParser.reconcileRows([...plain,...draft.ocrRows],draft.domain,usualWorkdays()),draft.domain);
     sortedDraft(draft.rows);
     importPreview();
     status.textContent=draft.rows.length+" proposed shift"+(draft.rows.length===1?"":"s")+" ready to review.";
