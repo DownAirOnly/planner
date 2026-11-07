@@ -24,8 +24,8 @@ const displayLocation=e=>{
  if(e.domain!=="work")return loc;
  return park==="IOA"?loc:[park,loc].filter(Boolean).join(" · ");
 };
-const workMeta=e=>{const assignment=assignmentLabel(e),area=displayLocation(e);return [assignment,area].filter(Boolean).join(" · ");};
-const zoneStyle=e=>e.assignment==="zones"&&ZONE_COLORS.some(x=>x[0]===e.zoneColor)?' zone-'+e.zoneColor:"";
+const workMeta=e=>{const assignment=assignmentLabel(e)+(e.assignmentEstimated?" (suggested)":"");const area=displayLocation(e);return [assignment,area].filter(Boolean).join(" · ");};
+const zoneStyle=e=>e.assignment==="zones"&&!!e.zoneColor&&ZONE_COLORS.some(x=>x[0]===e.zoneColor)?' zone-'+e.zoneColor:"";
 const options=(arr,value)=>arr.map(([key,label])=>'<option value="'+esc(key)+'" '+(key===value?"selected":"")+'>'+esc(label)+'</option>').join("");
 function workFields(e,suffix){
  const name=(field)=>field+(suffix!==""?"-"+suffix:"");
