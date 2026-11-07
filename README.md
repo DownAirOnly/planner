@@ -1,5 +1,13 @@
 # Command
 
+## v5 — Work scheduling
+
+- Proposed work shifts include an assignment: **Lead, Zones, RTC, Detail, Other**, or Not set. Zones can be color-coded (red, orange, yellow, green, blue, purple).
+- Importer infers park and area from job text; normal IOA schedule cards display the area without repeating the park name. CityWalk and USF remain distinguishable.
+- Date confidence is labeled **High / Medium / Low**, with a brief reason for estimates. These are heuristic labels, not calibrated probabilities. Imported rows remain editable before saving.
+- The importer makes a second local OCR pass of the upper screenshot when it may contain a cut-off shift. If a preceding weekday is visible but its times are unreadable, it may propose an **unchecked, low-confidence** partial shift to complete manually; it does not fabricate times.
+- Other schedule domains (School, Personal) remain separate and unaffected.
+
 ## v4 screenshot import
 
 Screenshot import now opens a compact **proposed schedule** with one line per detected shift and an **Edit** button for each. The unprocessed OCR text is hidden in **Other import options**. Month headings and split day-number columns are supported; when OCR loses a date, the app can estimate a neighboring date and marks it for review. Time ranges crossing midnight show **next day**. Always review suggestions before saving.
@@ -7,7 +15,7 @@ Screenshot import now opens a compact **proposed schedule** with one line per de
 
 Personal dashboard with separate work, school, and personal calendars; projects, tasks, and ideas.
 
-## Command v4
+## Command v5
 
 - **Home:** concise overview of next work shift, next class, tasks, and projects. Work and school summaries remain separate.
 - **Schedule:** dedicated tab with Work, School, Personal, and optional All filters. Day, week, and month calendars. No automatic mixing between domains.
