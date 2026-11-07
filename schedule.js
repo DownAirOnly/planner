@@ -27,13 +27,14 @@ const displayLocation=e=>{
 const workMeta=e=>{const assignment=assignmentLabel(e),area=displayLocation(e);return [assignment,area].filter(Boolean).join(" · ");};
 const zoneStyle=e=>e.assignment==="zones"&&ZONE_COLORS.some(x=>x[0]===e.zoneColor)?' zone-'+e.zoneColor:"";
 const options=(arr,value)=>arr.map(([key,label])=>'<option value="'+esc(key)+'" '+(key===value?"selected":"")+'>'+esc(label)+'</option>').join("");
-function workFields(e,prefix){
- const val=(key)=>esc(e[key]||"");
+function workFields(e,suffix){
+ const name=(field)=>field+(suffix!==""?"-"+suffix:"");
+ const loc=String(e.location||"").replace(/^(?:IOA|USF|CityWalk)\s*[·/-]\s*/i,"").trim();
  return '<div class="work-fields">'+
-  '<div class="field"><label>What am I doing?</label><select name="'+prefix+'assignment" class="work-assignment-select">'+options(ASSIGNMENTS,e.assignment||"")+'</select></div>'+
-  '<div class="field work-zone-field" '+(e.assignment==="zones"?"":"hidden")+'><label>Zone color</label><select name="'+prefix+'zoneColor">'+options(ZONE_COLORS,e.zoneColor||"")+'</select></div>'+
-  '<div class="form-grid"><div class="field"><label>Park</label><select name="'+prefix+'park">'+options(PARKS,e.park||"IOA")+'</select></div>'+
-  '<div class="field"><label>Area (optional)</label><input name="'+prefix+'location" value="'+esc(displayLocation({...e,park:"IOA"}))+'" placeholder="Lost Continent"></div></div>'+
+  '<div class="field"><label>What am I doing?</label><select name="'+name("assignment")+'" class="work-assignment-select">'+options(ASSIGNMENTS,e.assignment||"")+'</select></div>'+
+  '<div class="field work-zone-field" '+(e.assignment==="zones"?"":"hidden")+'><label>Zone color</label><select name="'+name("zoneColor")+'">'+options(ZONE_COLORS,e.zoneColor||"")+'</select></div>'+
+  '<div class="form-grid"><div class="field"><label>Park</label><select name="'+name("park")+'">'+options(PARKS,e.park||"IOA")+'</select></div>'+
+  '<div class="field"><label>Area (optional)</label><input name="'+name("location")+'" value="'+esc(loc)+'" placeholder="Lost Continent"></div></div>'+
  '</div>';
 }
 
@@ -181,14 +182,20 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
     '<p class="schedule-hint">Check the shifts, then save. Tap Edit to change anything.</p>'+
     '<form id="schedule-import-form"><div class="schedule-import-preview">'+found.map((row,i)=>{
       const duplicate=existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
-      const needsEdit=!row.startTime||!row.endTime||!!row.estimatedDate;
-      const time=fmtTime(row);
+      const confidence=(!row.startTime||!row.endTime)?"low":(row.dateConfidence||row.estimatedDate?"medium":"high");
+      const level=typeof confidence==="string"?confidence:"medium";
+      const confText=level==="high"?"High confidence":level==="medium"?"Medium confidence":"Low confidence";
+      const needsEdit=!row.startTime||!row.endTime;
+      const detail=row.confidenceReason||(!row.startTime||!row.endTime?"Times could not be read":"Date and time inferred");
+      const status=(!row.startTime||!row.endTime)?"Times need review":fmtTime(row);
+      const detailHtml=(row.domain==="work"?workFields(row,i):
+        '<div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div>');
       return '<div class="schedule-proposed-row" data-review-row="'+i+'">'+
-        '<div class="schedule-proposed-top"><label class="schedule-proposed-check"><input type="checkbox" name="include-'+i+'" '+(duplicate||row._include===false?"":"checked")+' aria-label="Include shift '+(i+1)+'">'+
+        '<div class="schedule-proposed-top"><label class="schedule-proposed-check"><input type="checkbox" name="include-'+i+'" '+(duplicate||row._include===false||needsEdit?"":"checked")+' aria-label="Include shift '+(i+1)+'">'+
           '<span class="schedule-proposed-main"><strong>'+esc(labelDate(row.date))+'</strong>'+
-            '<span>'+esc(time||"Time needs review")+'</span>'+
-            (row.location?'<small>'+esc(row.location)+'</small>':"")+
-            (row.estimatedDate?'<small class="schedule-estimated-date">Date estimated — check</small>':"")+
+            '<span>'+esc(status)+'</span>'+
+            '<small class="schedule-work-summary'+zoneStyle(row)+'">'+esc(row.domain==="work"?workMeta(row):displayLocation(row))+'</small>'+
+            '<small class="schedule-confidence confidence-'+level+'" title="'+esc(detail)+'">'+confText+(level==="high"?"":" · "+esc(detail))+'</small>'+
           '</span></label>'+
           '<button type="button" class="schedule-row-edit" data-action="schedule-review-toggle" data-index="'+i+'" aria-expanded="'+(needsEdit?"true":"false")+'">Edit</button></div>'+
         (duplicate?'<div class="schedule-duplicate-note">Already saved — unchecked</div>':"")+
@@ -196,8 +203,8 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
           '<div class="field"><label>Title</label><input name="title-'+i+'" value="'+esc(row.title)+'"></div>'+
           '<div class="form-grid"><div class="field"><label>Date</label><input type="date" name="date-'+i+'" value="'+esc(row.date)+'"></div>'+
           '<div class="field"><label>Start</label><input type="time" name="start-'+i+'" value="'+esc(row.startTime)+'"></div></div>'+
-          '<div class="form-grid"><div class="field"><label>End</label><input type="time" name="end-'+i+'" value="'+esc(row.endTime)+'"></div>'+
-          '<div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div></div>'+
+          '<div class="form-grid"><div class="field"><label>End</label><input type="time" name="end-'+i+'" value="'+esc(row.endTime)+'"></div></div>'+
+          detailHtml+
           '<div class="field"><label>Notes</label><input name="notes-'+i+'" value="'+esc(row.notes)+'"></div>'+
           '<button type="button" class="button secondary" data-action="schedule-review-done" data-index="'+i+'">Done editing</button>'+
         '</div></div>';
@@ -207,19 +214,20 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
       '<button class="button secondary" type="button" data-action="schedule-add-review">'+ic("plus")+' Add a shift</button></div>');
  }
  function preserveReviewEdits(){
-  const draft=ui.workingImport;
-  const form=document.querySelector("#schedule-import-form");
+  const draft=ui.workingImport,form=document.querySelector("#schedule-import-form");
   if(!draft||!form)return;
-  const values=new FormData(form);
-  draft.rows=draft.rows.map((row,i)=>({
-    ...row,
-    date:parseIso(values.get("date-"+i))||row.date,
-    title:String(values.get("title-"+i)||row.title).trim(),
-    startTime:String(values.get("start-"+i)||""),
-    endTime:String(values.get("end-"+i)||""),
-    location:String(values.get("location-"+i)||"").trim(),
-    notes:String(values.get("notes-"+i)||"").trim(),
-    _include:values.has("include-"+i)
+  const v=new FormData(form);
+  draft.rows=draft.rows.map((row,i)=>({...row,
+    date:parseIso(v.get("date-"+i))||row.date,
+    title:String(v.get("title-"+i)||row.title).trim(),
+    startTime:String(v.get("start-"+i)||""),
+    endTime:String(v.get("end-"+i)||""),
+    location:String(v.get("location-"+i)||"").trim(),
+    park:String(v.get("park-"+i)||row.park||"IOA"),
+    assignment:String(v.get("assignment-"+i)||""),
+    zoneColor:String(v.get("zoneColor-"+i)||""),
+    notes:String(v.get("notes-"+i)||"").trim(),
+    _include:v.has("include-"+i)
   }));
  }
  function toggleRow(index,forceClose=false){
