@@ -182,7 +182,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
     '<p class="schedule-hint">Check the shifts, then save. Tap Edit to change anything.</p>'+
     '<form id="schedule-import-form"><div class="schedule-import-preview">'+found.map((row,i)=>{
       const duplicate=existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
-      const confidence=(!row.startTime||!row.endTime)?"low":(row.dateConfidence||row.estimatedDate?"medium":"high");
+      const confidence=(!row.startTime||!row.endTime)?"low":(row.dateConfidence|| (row.estimatedDate?"low":"medium"));
       const level=typeof confidence==="string"?confidence:"medium";
       const confText=level==="high"?"High confidence":level==="medium"?"Medium confidence":"Low confidence";
       const needsEdit=!row.startTime||!row.endTime;
@@ -237,20 +237,26 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
   fields.hidden=forceClose?true:!fields.hidden;
   if(button){button.textContent=fields.hidden?"Edit":"Close";button.setAttribute("aria-expanded",String(!fields.hidden));}
   if(forceClose){
-    const form=document.querySelector("#schedule-import-form");
-    if(form) {
-      const v=new FormData(form), row=ui.workingImport?.rows[index];
-      if(row){
-        const date=parseIso(v.get("date-"+index))||row.date;
-        row.estimatedDate=false;
-        const time=fmtTime({...row,startTime:String(v.get("start-"+index)||""),endTime:String(v.get("end-"+index)||"")});
-        const root=document.querySelector('[data-review-row="'+index+'"]');
-        if(root){
-          const title=root.querySelector(".schedule-proposed-main strong"),t=root.querySelector(".schedule-proposed-main > span");
-          if(title)title.textContent=labelDate(date);
-          if(t)t.textContent=time||"Time needs review";
-        }
-      }
+    const form=document.querySelector("#schedule-import-form"),row=ui.workingImport?.rows[index];
+    if(!form||!row)return;
+    const v=new FormData(form),date=parseIso(v.get("date-"+index))||row.date;
+    Object.assign(row,{
+      date,startTime:String(v.get("start-"+index)||""),endTime:String(v.get("end-"+index)||""),
+      location:String(v.get("location-"+index)||"").trim(),
+      park:String(v.get("park-"+index)||row.park||"IOA"),
+      assignment:String(v.get("assignment-"+index)||""),
+      zoneColor:String(v.get("zoneColor-"+index)||"")
+    });
+    const root=document.querySelector('[data-review-row="'+index+'"]');
+    if(root){
+      const name=root.querySelector(".schedule-proposed-main strong"),time=root.querySelector(".schedule-proposed-main > span");
+      const meta=root.querySelector(".schedule-work-summary");
+      const confidence=root.querySelector(".schedule-confidence");
+      if(name)name.textContent=labelDate(row.date);
+      if(time)time.textContent=fmtTime(row)||"Time needs review";
+      if(meta){meta.textContent=row.domain==="work"?workMeta(row):displayLocation(row);meta.className="schedule-work-summary"+zoneStyle(row);}
+      if(confidence){confidence.textContent="Reviewed";confidence.className="schedule-confidence confidence-reviewed";}
+      row.estimatedDate=false;
     }
   }
  }
@@ -349,7 +355,20 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
  }
  function handleInput(target){
   if(target?.id==="schedule-image-input"){readScreenshots();return true;}
-  if(target?.name==="repeat"){const box=document.querySelector("#schedule-repeat-options");if(box)box.hidden=target.value!=="weekly";return true;}
+  if(target?.classList?.contains("work-assignment-select")){
+    const group=target.closest(".work-fields");
+    const zone=group?.querySelector(".work-zone-field");
+    if(zone)zone.hidden=target.value!=="zones";
+    return true;
+   }
+   if(target?.id==="ev-domain"){
+    const isWork=target.value==="work";
+    const work=document.querySelector("#event-work-fields"),other=document.querySelector(".event-general-location");
+    if(work)work.hidden=!isWork;
+    if(other)other.hidden=isWork;
+    return true;
+   }
+   if(target?.name==="repeat"){const box=document.querySelector("#schedule-repeat-options");if(box)box.hidden=target.value!=="weekly";return true;}
   return false;
  }
  function handleSubmit(form){
@@ -386,7 +405,11 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
     if(!date||!startTime||!endTime){alert("Check the dates and times for selected events.");return true;}
     const key=[draft.domain,date,startTime,endTime].join("|");
     if(existing.has(key))continue;existing.add(key);
-    incoming.push({id:uid(),domain:draft.domain,title:String(v.get("title-"+i)||"").trim()||"Event",date,startTime,endTime,allDay:false,location:String(v.get("location-"+i)||"").trim(),notes:String(v.get("notes-"+i)||"").trim(),repeat:"none",weekdays:[],until:""});
+    incoming.push({id:uid(),domain:draft.domain,title:String(v.get("title-"+i)||"").trim()||"Event",date,startTime,endTime,allDay:false,
+      location:String(v.get("location-"+i)||"").trim(),park:draft.domain==="work"?String(v.get("park-"+i)||"IOA"):"",
+      assignment:draft.domain==="work"?String(v.get("assignment-"+i)||""):"",
+      zoneColor:draft.domain==="work"?String(v.get("zoneColor-"+i)||""):"",
+      notes:String(v.get("notes-"+i)||"").trim(),repeat:"none",weekdays:[],until:""});
    }
    if(!incoming.length){toast("No new events selected");return true;}
    updateEvents([...events(),...incoming]);ui.domain=draft.domain;ui.selected=incoming[0].date;ui.workingImport=null;closeSheet();toast(incoming.length+" event"+(incoming.length===1?"":"s")+" added");return true;
