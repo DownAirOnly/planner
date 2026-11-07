@@ -162,3 +162,60 @@
 .schedule-weekday-prefs{display:grid;gap:7px;margin:18px 0}
 .schedule-workday-option{display:flex;align-items:center;gap:13px;border:1px solid var(--line);border-radius:12px;padding:13px 14px;background:var(--panel);color:var(--text);font-weight:650;font-size:14px;cursor:pointer}
 .schedule-workday-option input{width:19px;height:19px;accent-color:var(--mint);flex-shrink:0}
+
+/* v7 scheduled hours, breaks and seven-day work/pay periods */
+.schedule-period-block{border:1px solid var(--line);background:var(--panel);border-radius:18px;padding:15px;margin:2px 0 17px}
+.schedule-period-switch{display:grid;grid-template-columns:1fr 1fr;gap:5px;background:#141f21;border:1px solid var(--line);padding:4px;border-radius:12px;margin-bottom:13px}
+.schedule-period-switch button{border:0;background:transparent;color:var(--muted);border-radius:9px;padding:10px 8px;font-size:13px;font-weight:730}
+.schedule-period-switch button.active{background:#365247;color:var(--mint)}
+.schedule-period-caption{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap;margin:0 0 14px}
+.schedule-period-caption strong{font-size:14px;font-weight:750}
+.schedule-period-caption span{color:var(--muted);font-size:11px}
+.schedule-time-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.schedule-time-summary>div{display:flex;flex-direction:column;gap:5px;background:#233235;border-radius:12px;padding:12px 10px;min-width:0}
+.schedule-time-summary strong{font-size:clamp(16px,3vw,20px);font-weight:770;letter-spacing:-.35px;line-height:1.2;white-space:nowrap;font-variant-numeric:tabular-nums}
+.schedule-time-summary>div:last-child strong{color:var(--mint)}
+.schedule-time-summary span{color:var(--muted);font-size:11px}
+.schedule-time-disclaimer{margin:11px 2px 0;font-size:11px;color:var(--muted);line-height:1.5}
+.schedule-period-agenda{border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.schedule-period-day{padding:12px 13px;background:var(--panel)}
+.schedule-period-day+.schedule-period-day{border-top:1px solid var(--line)}
+.schedule-period-day.selected{background:#1f3130}
+.schedule-period-day-label{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:7px}
+.schedule-period-day-label strong{font-size:12px}
+.schedule-period-day-label span{color:var(--muted);font-size:11px}
+.schedule-period-shift{width:100%;min-width:0;display:flex;align-items:center;gap:10px;border:0;border-radius:10px;background:#152123;color:var(--text);padding:11px;text-align:left}
+.schedule-period-shift+.schedule-period-shift{margin-top:6px}
+.schedule-period-shift-bar{width:4px;align-self:stretch;min-height:40px;border-radius:999px;background:#89b6e9;flex-shrink:0}
+.schedule-period-shift.zone-red .schedule-period-shift-bar{background:#ef777b}
+.schedule-period-shift.zone-orange .schedule-period-shift-bar{background:#f5a968}
+.schedule-period-shift.zone-yellow .schedule-period-shift-bar{background:#e6c966}
+.schedule-period-shift.zone-green .schedule-period-shift-bar{background:#8dd6a6}
+.schedule-period-shift.zone-blue .schedule-period-shift-bar{background:#7eafea}
+.schedule-period-shift.zone-purple .schedule-period-shift-bar{background:#ac95e4}
+.schedule-period-shift-main{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+.schedule-period-shift-main strong{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.schedule-period-shift-main small{color:var(--muted);font-size:11px;line-height:1.35}
+.schedule-period-shift-hours{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none}
+.schedule-period-shift-hours strong{color:var(--mint);font-size:13px;font-weight:730;white-space:nowrap}
+.schedule-period-shift-hours small{font-size:10px;color:var(--muted)}
+.schedule-period-shift>.icon{width:13px;height:13px;color:var(--muted)}
+.schedule-break-field{margin:4px 0 16px;padding:13px;background:#182729;border:1px solid var(--line);border-radius:13px}
+.schedule-break-field>label{display:block;font-size:12px;color:#b6c8c4;font-weight:720;margin-bottom:9px}
+.schedule-break-inputs{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.schedule-break-inputs>select{width:auto;min-width:155px;flex:1;max-width:100%;color:var(--text);background:#101a1c;border:1px solid #405355;border-radius:10px;padding:10px;font-size:14px}
+.schedule-break-manual{display:flex;align-items:center;gap:6px}
+.schedule-break-manual[hidden]{display:none}
+.schedule-break-manual>input{width:81px;color:var(--text);background:#101a1c;border:1px solid #405355;border-radius:10px;padding:10px;font-size:14px}
+.schedule-break-manual>span{font-size:12px;color:var(--muted)}
+.schedule-break-field>small{display:block;color:var(--muted);font-size:11px;line-height:1.5;margin-top:9px}
+.schedule-import-hours{color:var(--mint)!important;font-weight:560;font-variant-numeric:tabular-nums}
+@media(max-width:480px){
+ .schedule-period-block{padding:12px}
+ .schedule-time-summary>div{padding:11px 8px}
+ .schedule-time-summary strong{font-size:17px}
+ .schedule-period-shift{padding:9px;gap:7px}
+ .schedule-period-shift-main strong{font-size:12px}
+ .schedule-period-shift-hours strong{font-size:12px}
+ .schedule-period-shift>.icon{display:none}
+}
