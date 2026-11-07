@@ -256,7 +256,7 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
   if(forceClose){
     const form=document.querySelector("#schedule-import-form"),row=ui.workingImport?.rows[index];
     if(!form||!row)return;
-    const v=new FormData(form),date=parseIso(v.get("date-"+index))||row.date;
+    const v=new FormData(form),priorDate=row.date,date=parseIso(v.get("date-"+index))||row.date;
     Object.assign(row,{
       date,startTime:String(v.get("start-"+index)||""),endTime:String(v.get("end-"+index)||""),
       location:String(v.get("location-"+index)||"").trim(),
@@ -264,6 +264,7 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
       assignment:String(v.get("assignment-"+index)||""),
       zoneColor:String(v.get("zoneColor-"+index)||"")
     });
+    row.estimatedDate=false;row.reviewed=true;row.assignmentEstimated=false;row.locationEstimated=false;
     const root=document.querySelector('[data-review-row="'+index+'"]');
     if(root){
       const name=root.querySelector(".schedule-proposed-main strong"),time=root.querySelector(".schedule-proposed-main > span");
@@ -273,7 +274,11 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
       if(time)time.textContent=fmtTime(row)||"Time needs review";
       if(meta){meta.textContent=row.domain==="work"?workMeta(row):displayLocation(row);meta.className="schedule-work-summary"+zoneStyle(row);}
       if(confidence){confidence.textContent="Reviewed";confidence.className="schedule-confidence confidence-reviewed";}
-      row.estimatedDate=false;row.reviewed=true;row.assignmentEstimated=false;row.locationEstimated=false;
+    }
+    if(row.date!==priorDate){
+      preserveReviewEdits();
+      sortedDraft(ui.workingImport.rows);
+      importPreview();
     }
   }
  }
