@@ -1,5 +1,6 @@
 (function app(){
   "use strict";
+  const APP_VERSION = 6;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -183,7 +184,7 @@
       '<div class="settings-group"><h3>Saved on this device</h3><p>Everything is stored in this browser. There is no account or cloud synchronization yet. Clearing browser website data can erase your changes.</p></div>'+
       '<div class="settings-group"><h3>Back up your data</h3><p>Export a JSON file before switching phones, clearing browser data, or making significant changes.</p><button class="button" data-action="export">'+icon("download")+' Export backup</button><button class="button secondary" data-action="import">'+icon("upload")+' Import backup</button></div>'+
       '<div class="settings-group"><h3>Reset starter data</h3><p>Replace your local data with the original starter projects. Export first if you want to keep your current work.</p><button class="button danger" data-action="reset">'+icon("trash")+' Reset data</button></div>'+
-      '<div class="settings-group"><h3>About</h3><p>Command v4 · Projects and calendar. Local storage only; no account sync. Screenshot recognition happens in your browser.</p></div>');
+      '<div class="settings-group"><h3>About</h3><p>Command v'+APP_VERSION+' · Projects and calendar. Local storage only; no account sync. Screenshot recognition happens in your browser.</p></div>');
   }
   function exportData(){
     const text=JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2);
