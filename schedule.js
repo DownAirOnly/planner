@@ -12,7 +12,8 @@ const labelDate=s=>{const d=fromDate(s);return d?d.toLocaleDateString(undefined,
 const fullDate=s=>{const d=fromDate(s);return d?d.toLocaleDateString(undefined,{weekday:"long",month:"long",day:"numeric",year:"numeric"}):s;};
 const clock=t=>{if(!t)return"";const bits=t.split(":");let h=+bits[0];return (h%12||12)+":"+bits[1]+" "+(h>=12?"PM":"AM");};
 const uid=()=>crypto&&crypto.randomUUID?crypto.randomUUID():"event-"+Date.now()+"-"+Math.floor(Math.random()*99999);
-const fmtTime=e=>e.allDay?"All day":[clock(e.startTime),clock(e.endTime)].filter(Boolean).join("–")+(e.startTime&&e.endTime&&e.endTime<e.startTime?" (next day)":"");
+const fmtTime=e=>e.allDay?"All day":[clock(e.startTime),clock(e.endTime)].filter(Boolean).join("–");
+const timekeeping=window.CommandTimekeeping;
 
 const ASSIGNMENTS=[["","Not set"],["lead","Lead"],["zones","Zones"],["rtc","RTC"],["detail","Detail"],["other","Other"]];
 const ZONE_COLORS=[["","Choose zone"],["red","Red Zone"],["orange","Orange Zone"],["yellow","Yellow Zone"],["green","Green Zone"],["blue","Blue Zone"],["purple","Purple Zone"]];
@@ -80,7 +81,7 @@ function parseTimeRange(text){
 }
 function parseImportedText(raw,domain,year,month){return window.CommandImportParser.parseText(raw,domain,year,month);}
 function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSheet,closeSheet,toast,openSchedule}){
- const ui={domain:"work",mode:"week",selected:localDate(new Date()),workingImport:null};
+ const ui={domain:"work",mode:"week",periodMode:"work",selected:localDate(new Date()),workingImport:null};
  const events=()=>getEvents()||[];
  const usualWorkdays=()=>getSchedulePrefs?.()?.usualWorkdays||[5,6,0,1,2];
  const workWeekOrder=[5,6,0,1,2,3,4];
@@ -93,6 +94,64 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
  const filter=e=>ui.domain==="all"||e.domain===ui.domain;
  const selectedEvents=(iso)=>events().filter(e=>filter(e)&&visibleOnDate(e,iso)).sort((a,b)=>(a.allDay?"":a.startTime).localeCompare(b.allDay?"":b.startTime));
  const dateEvents=(iso,domain)=>events().filter(e=>(!domain||e.domain===domain)&&visibleOnDate(e,iso)).sort((a,b)=>a.startTime.localeCompare(b.startTime));
+ const period=()=>timekeeping.period(ui.selected,ui.periodMode);
+ const periodEvents=()=>period().days.flatMap(date=>dateEvents(date,"work").map(e=>({...e,occurrenceDate:date})));
+ const duration=e=>timekeeping.minutesLabel(timekeeping.shiftTotals(e).scheduled);
+ const adjusted=e=>timekeeping.minutesLabel(timekeeping.shiftTotals(e).adjusted);
+ const breakDisplay=e=>timekeeping.shiftTotals(e).breaks+"m";
+ function timeSummary(t){
+  return '<div class="schedule-time-summary"><div><strong>'+timekeeping.minutesLabel(t.scheduled)+'</strong><span>Scheduled</span></div>'+
+    '<div><strong>−'+timekeeping.minutesLabel(t.breaks)+'</strong><span>Breaks</span></div>'+
+    '<div><strong>'+timekeeping.minutesLabel(t.adjusted)+'</strong><span>Adjusted</span></div></div>';
+ }
+ function breakFields(e,suffix){
+  const name=k=>k+(suffix!==""?"-"+suffix:"");
+  const m=timekeeping.validOverride(e.breakMinutes);
+  const auto=timekeeping.autoBreakMinutes(timekeeping.scheduledMinutes(e));
+  return '<div class="schedule-break-field"><label>Break deduction</label><div class="schedule-break-inputs">'+
+    '<select class="schedule-break-mode" name="'+name("breakMode")+'"><option value="auto" '+(m===null?"selected":"")+'>Automatic ('+auto+' min)</option>'+
+    '<option value="manual" '+(m!==null?"selected":"")+'>Manual</option></select>'+
+    '<div class="schedule-break-manual" '+(m===null?"hidden":"")+'><input type="number" min="0" max="1440" step="1" inputmode="numeric" name="'+name("breakMinutes")+'" value="'+(m===null?"":m)+'" aria-label="Manual break minutes"><span>min</span></div></div>'+
+    '<small>Auto: 0 min up to 6h; 15 min over 6h; 30 min over 8h.</small></div>';
+ }
+ function breakValue(values,suffix,entry){
+  const name=k=>k+(suffix!==""?"-"+suffix:"");
+  if(values.get(name("breakMode"))!=="manual")return null;
+  const input=String(values.get(name("breakMinutes"))??"").trim();
+  if(!input)throw new Error("Enter manual break minutes, or switch to Automatic.");
+  const amount=Number(input),duration=timekeeping.scheduledMinutes(entry);
+  if(!Number.isInteger(amount)||amount<0||amount>1440)throw new Error("Break must be a whole number of minutes between 0 and 1440.");
+  if(duration!=null&&amount>duration)throw new Error("Break cannot exceed the scheduled shift length.");
+  return amount;
+ }
+ function periodHeader(p){
+  return labelDate(p.start)+' – '+labelDate(p.end);
+ }
+ function workPeriodSummary(){
+  const p=period(),items=periodEvents(),totals=timekeeping.aggregate(items);
+  return '<section class="schedule-period-block">'+
+    '<div class="schedule-period-switch" role="group" aria-label="Hours grouping">'+
+      '<button type="button" class="'+(ui.periodMode==="work"?"active":"")+'" data-action="schedule-period" data-period="work">Work Week</button>'+
+      '<button type="button" class="'+(ui.periodMode==="pay"?"active":"")+'" data-action="schedule-period" data-period="pay">Pay Week</button></div>'+
+    '<div class="schedule-period-caption"><strong>'+esc(periodHeader(p))+'</strong><span>'+(p.mode==="work"?"Friday–Thursday":"Sunday–Saturday")+' · '+totals.shifts+' shift'+(totals.shifts===1?"":"s")+'</span></div>'+
+    timeSummary(totals)+
+    '<p class="schedule-time-disclaimer">Adjusted hours subtract planned breaks, not actual clock punches.</p>'+
+   '</section>';
+ }
+ function workPeriodAgenda(){
+  const p=period(),all=periodEvents();
+  return '<section class="section schedule-agenda"><div class="section-head"><h2>Shifts</h2><span class="muted">'+all.length+' in this period</span></div>'+
+   (all.length?'<div class="schedule-period-agenda">'+p.days.map(day=>{
+    const items=dateEvents(day,"work");
+    return '<div class="schedule-period-day '+(day===ui.selected?"selected":"")+'"><div class="schedule-period-day-label"><strong>'+esc(labelDate(day))+'</strong><span>'+ (items.length?timekeeping.minutesLabel(timekeeping.aggregate(items).adjusted)+' adjusted':"Day off")+'</span></div>'+
+      (items.length?items.map(e=>{
+       const t=timekeeping.shiftTotals(e);
+       return '<button type="button" class="schedule-period-shift'+zoneStyle(e)+'" data-action="schedule-edit" data-id="'+esc(e.id)+'"><span class="schedule-period-shift-bar"></span><span class="schedule-period-shift-main"><strong>'+esc(fmtTime(e))+'</strong>'+
+        '<small>'+esc(workMeta(e)||"Work shift")+'</small><small>'+esc(duration(e))+' scheduled · '+esc(breakDisplay(e))+' break</small></span><span class="schedule-period-shift-hours"><strong>'+esc(adjusted(e))+'</strong><small>Adjusted</small></span>'+ic("chevron-right","tiny")+'</button>';
+      }).join(""):'')+'</div>';
+   }).join("")+'</div>':
+   '<div class="empty"><strong>No work shifts scheduled</strong><p>Import a screenshot or add a shift.</p></div>')+'</section>';
+ }
  function nextEvent(domain){
    const now=new Date(),day0=localDate(now);
    for(let i=0;i<365;i++){const day=localDate(shiftDate(now,i));const possible=dateEvents(day,domain).filter(e=>i!==0||e.allDay||!e.endTime||(day+"T"+e.endTime)>=day0+"T"+pad(now.getHours())+":"+pad(now.getMinutes()));if(possible.length)return{...possible[0],occurrenceDate:day};}
@@ -107,12 +166,13 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
  }
  const heading=()=>{
    const date=fromDate(ui.selected),format=ui.mode==="month"?{month:"long",year:"numeric"}:ui.mode==="week"?{month:"short",year:"numeric"}:{weekday:"long",month:"long",day:"numeric"};
-   return date.toLocaleDateString(undefined,format);
+   return ui.domain==="work"&&ui.mode==="week"?periodHeader(period()):date.toLocaleDateString(undefined,format);
  };
  function daysForView(){
    const selected=fromDate(ui.selected);
    if(ui.mode==="day")return[selected];
    if(ui.mode==="week"){
+     if(ui.domain==="work")return period().days.map(fromDate);
      const start=shiftDate(selected,-((selected.getDay()+6)%7));
      return Array.from({length:7},(_,i)=>shiftDate(start,i));
    }
@@ -126,7 +186,7 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
   const days=daysForView();
   let grid="";
   if(ui.mode!=="day"){
-    grid='<div class="schedule-cal-head">'+["M","T","W","T","F","S","S"].map(v=>'<span>'+v+'</span>').join("")+'</div><div class="schedule-cal-grid '+ui.mode+'">'+days.map(d=>{
+    grid='<div class="schedule-cal-head">'+(ui.domain==="work"&&ui.mode==="week"?days.map(d=>DAYS[d.getDay()].charAt(0)):["M","T","W","T","F","S","S"]).map(v=>'<span>'+v+'</span>').join("")+'</div><div class="schedule-cal-grid '+ui.mode+'">'+days.map(d=>{
        const iso=localDate(d),matches=selectedEvents(iso),active=iso===ui.selected,other=d.getMonth()!==fromDate(ui.selected).getMonth();
        let dots="";
        if(matches.length)dots='<span class="schedule-dots">'+[...new Set(matches.map(e=>e.domain))].slice(0,3).map(domain=>'<i class="'+domain+'"></i>').join("")+'</span>';
@@ -146,7 +206,7 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
    '<div class="schedule-domain-picker" role="group" aria-label="Calendar category">'+["work","school","personal","all"].map(d=>'<button data-action="schedule-domain" data-domain="'+d+'" class="'+(ui.domain===d?"active":"")+'">'+(d==="all"?"All":DOMAINS[d].label)+'</button>').join("")+'</div>'+
    '<div class="schedule-view-bar"><span class="small-label">'+(ui.domain==="all"?"All calendars":DOMAINS[ui.domain].label+" calendar")+'</span><div class="schedule-view-picker">'+["day","week","month"].map(mode=>'<button data-action="schedule-mode" data-mode="'+mode+'" class="'+(ui.mode===mode?"active":"")+'">'+mode[0].toUpperCase()+mode.slice(1)+'</button>').join("")+'</div></div>'+
    (ui.domain==="work"?'<div class="schedule-workweek-note"><span>Usual workdays: <strong>'+esc(workweekText())+'</strong></span><button type="button" data-action="schedule-workweek">Edit</button></div>':"")+
-   calendar()+eventRows()+
+    (ui.domain==="work"?workPeriodSummary():"")+calendar()+(ui.domain==="work"&&ui.mode==="week"?workPeriodAgenda():eventRows())+
    (ui.domain==="school"?'<p class="schedule-hint">For classes that meet on the same weekdays, choose “Repeat weekly” when adding an event.</p>':"");
  }
  function eventForm(item={}){
@@ -374,6 +434,7 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
   if(!action.startsWith("schedule-"))return false;
   if(action==="schedule-domain"){ui.domain=b.dataset.domain;openSchedule(false);}
   if(action==="schedule-mode"){ui.mode=b.dataset.mode;openSchedule(false);}
+  if(action==="schedule-period"){ui.periodMode=b.dataset.period==="pay"?"pay":"work";openSchedule(false);}
   if(action==="schedule-select"){ui.selected=b.dataset.date;openSchedule(false);}
   if(action==="schedule-prev"||action==="schedule-next"){const sign=action==="schedule-prev"?-1:1;const d=fromDate(ui.selected);ui.selected=localDate(ui.mode==="day"?shiftDate(d,sign):ui.mode==="week"?shiftDate(d,7*sign):new Date(d.getFullYear(),d.getMonth()+sign,Math.min(d.getDate(),new Date(d.getFullYear(),d.getMonth()+sign+1,0).getDate())));openSchedule(false);}
   if(action==="schedule-today"){ui.selected=localDate(new Date());openSchedule(false);}
