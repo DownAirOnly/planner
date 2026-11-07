@@ -130,7 +130,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
  function eventRows(){
   const selected=selectedEvents(ui.selected);
   return '<section class="section schedule-agenda"><div class="section-head"><h2>'+esc(fullDate(ui.selected))+'</h2><span class="muted">'+selected.length+' event'+(selected.length===1?"":"s")+'</span></div>'+
-   (selected.length?'<div class="schedule-event-list">'+selected.map(e=>'<button class="schedule-event '+e.domain+'" data-action="schedule-edit" data-id="'+esc(e.id)+'"><span class="schedule-event-line"></span><span class="schedule-event-body"><span class="schedule-event-title">'+esc(e.title)+'</span><span class="schedule-event-time">'+esc(fmtTime(e)+(e.domain==="work"?(workMeta(e)?" · "+workMeta(e):""):(e.location?" · "+e.location:"")))+'</span></span>'+ic("chevron-right")+'</button>').join("")+'</div>':
+   (selected.length?'<div class="schedule-event-list">'+selected.map(e=>'<button class="schedule-event '+e.domain+zoneStyle(e)+'" data-action="schedule-edit" data-id="'+esc(e.id)+'"><span class="schedule-event-line"></span><span class="schedule-event-body"><span class="schedule-event-title">'+esc(e.title)+'</span><span class="schedule-event-time">'+esc(fmtTime(e)+(e.domain==="work"?(workMeta(e)?" · "+workMeta(e):""):(e.location?" · "+e.location:"")))+'</span></span>'+ic("chevron-right")+'</button>').join("")+'</div>':
    '<div class="empty"><strong>No '+(ui.domain==="all"?"events":DOMAINS[ui.domain].label.toLowerCase()+" events")+' scheduled</strong><p>Add an event or import a schedule.</p></div>')+'</section>';
  }
  function render(){
