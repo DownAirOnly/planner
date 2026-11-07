@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 6;
+  const APP_VERSION = 7;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -12,7 +12,7 @@
   const today = () => { const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
   const niceDate = (s) => { if(!s)return ""; const d=new Date(s+"T12:00:00"); return Number.isNaN(d.getTime()) ? String(s) : d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:d.getFullYear()===new Date().getFullYear()?undefined:"numeric"});};
   const defaults = () => ({
-    schemaVersion:3,
+    schemaVersion:4,
     schedulePrefs:{usualWorkdays:[5,6,0,1,2]},
     events:[],
     projects:[
@@ -51,7 +51,7 @@
     const usual=Array.isArray(obj.schedulePrefs?.usualWorkdays)?obj.schedulePrefs.usualWorkdays:[5,6,0,1,2];
     const usualWorkdays=[...new Set(usual.map(Number).filter(n=>Number.isInteger(n)&&n>=0&&n<=6))];
     const schedulePrefs={usualWorkdays:usualWorkdays.length?usualWorkdays:[5,6,0,1,2]};
-    return {schemaVersion:3,projects,tasks,ideas,events,schedulePrefs};
+    return {schemaVersion:4,projects,tasks,ideas,events,schedulePrefs};
   };
   let data;
   try { const stored=localStorage.getItem(KEY); data=stored?normalize(JSON.parse(stored)):defaults(); } catch(err){console.warn("Stored data could not be loaded.",err);data=defaults();}
