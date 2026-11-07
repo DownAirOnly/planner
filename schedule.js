@@ -79,9 +79,17 @@ function parseTimeRange(text){
  return start&&end?{startTime:start,endTime:end,matched:m[0]}:null;
 }
 function parseImportedText(raw,domain,year,month){return window.CommandImportParser.parseText(raw,domain,year,month);}
-function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}){
+function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSheet,closeSheet,toast,openSchedule}){
  const ui={domain:"work",mode:"week",selected:localDate(new Date()),workingImport:null};
  const events=()=>getEvents()||[];
+ const usualWorkdays=()=>getSchedulePrefs?.()?.usualWorkdays||[5,6,0,1,2];
+ const workWeekOrder=[5,6,0,1,2,3,4];
+ const workweekText=()=>{
+   const usual=usualWorkdays();
+   if([5,6,0,1,2].every(n=>usual.includes(n))&&usual.length===5)return "Fri–Tue";
+   return workWeekOrder.filter(n=>usual.includes(n)).map(n=>DAYS[n]).join(", ");
+ };
+ const sortedDraft=rows=>(rows||[]).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))||String(a.startTime||"").localeCompare(String(b.startTime||"")));
  const filter=e=>ui.domain==="all"||e.domain===ui.domain;
  const selectedEvents=(iso)=>events().filter(e=>filter(e)&&visibleOnDate(e,iso)).sort((a,b)=>(a.allDay?"":a.startTime).localeCompare(b.allDay?"":b.startTime));
  const dateEvents=(iso,domain)=>events().filter(e=>(!domain||e.domain===domain)&&visibleOnDate(e,iso)).sort((a,b)=>a.startTime.localeCompare(b.startTime));
@@ -137,6 +145,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
   return '<div class="page-heading"><div><p class="eyebrow">Calendar</p><h1 class="page-title">Schedule</h1></div><div class="action-row"><button class="button secondary" data-action="schedule-import">'+ic("upload")+' Import</button><button class="button" data-action="schedule-add">'+ic("plus")+' Add</button></div></div>'+
    '<div class="schedule-domain-picker" role="group" aria-label="Calendar category">'+["work","school","personal","all"].map(d=>'<button data-action="schedule-domain" data-domain="'+d+'" class="'+(ui.domain===d?"active":"")+'">'+(d==="all"?"All":DOMAINS[d].label)+'</button>').join("")+'</div>'+
    '<div class="schedule-view-bar"><span class="small-label">'+(ui.domain==="all"?"All calendars":DOMAINS[ui.domain].label+" calendar")+'</span><div class="schedule-view-picker">'+["day","week","month"].map(mode=>'<button data-action="schedule-mode" data-mode="'+mode+'" class="'+(ui.mode===mode?"active":"")+'">'+mode[0].toUpperCase()+mode.slice(1)+'</button>').join("")+'</div></div>'+
+   (ui.domain==="work"?'<div class="schedule-workweek-note"><span>Usual workdays: <strong>'+esc(workweekText())+'</strong></span><button type="button" data-action="schedule-workweek">Edit</button></div>':"")+
    calendar()+eventRows()+
    (ui.domain==="school"?'<p class="schedule-hint">For classes that meet on the same weekdays, choose “Repeat weekly” when adding an event.</p>':"");
  }
@@ -158,12 +167,20 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
    '<div class="field"><label for="ev-until">Repeat until (optional)</label><input id="ev-until" type="date" name="until" value="'+val("until")+'"></div><p class="schedule-hint">Editing or deleting a repeating event changes the whole series.</p></div>'+
    '<div class="sheet-actions">'+(item.id?'<button type="button" class="button danger" data-action="schedule-delete" data-id="'+val("id")+'">'+ic("trash")+' Delete</button>':'<span></span>')+'<button class="button" type="submit">'+ic("check")+' Save</button></div></form>');
  }
+ function workweekForm(){
+  const selected=usualWorkdays();
+  showSheet('<div class="sheet-head"><h2 class="sheet-title">Usual workdays</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+ic("x")+'</button></div>'+
+    '<p class="schedule-hint">These days help Command interpret unclear screenshot dates. Actual shifts still come from your schedule.</p>'+
+    '<form id="schedule-workweek-form"><div class="schedule-weekday-prefs">'+workWeekOrder.map(d=>'<label class="schedule-workday-option"><input type="checkbox" name="usualDay" value="'+d+'" '+(selected.includes(d)?"checked":"")+'><span>'+["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d]+'</span></label>').join("")+'</div>'+
+    '<div class="sheet-actions"><button type="button" class="button secondary" data-action="close-modal">Cancel</button><button class="button" type="submit">'+ic("check")+' Save days</button></div></form>');
+ }
  function importForm(){
   const domain=ui.domain==="all"?"work":ui.domain;
   ui.workingImport={domain,rows:[],raw:"",ocrRows:[]};
   showSheet('<div class="sheet-head"><h2 class="sheet-title">Import schedule</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+ic("x")+'</button></div>'+
     '<div class="field"><label for="import-domain">Calendar</label><select id="import-domain">'+Object.keys(DOMAINS).map(d=>'<option value="'+d+'" '+(domain===d?"selected":"")+'>'+DOMAINS[d].label+'</option>').join("")+'</select></div>'+
     '<div class="field"><label for="schedule-image-input">Schedule screenshot</label><input type="file" id="schedule-image-input" accept="image/*" multiple></div>'+
+    (domain==="work"?'<div class="schedule-workweek-import"><span>Usual workdays: '+esc(workweekText())+'</span></div>':"")+
     '<p id="schedule-ocr-status" class="schedule-hint" role="status">Choose a screenshot. Command will propose shifts for you to review.</p>'+
     '<div id="schedule-import-results" class="schedule-import-results"></div>'+
     '<details class="schedule-import-advanced"><summary>Other import options</summary><div class="schedule-import-advanced-content">'+
@@ -176,7 +193,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
  }
  function importPreview(){
   const draft=ui.workingImport;if(!draft)return;
-  const found=draft.rows, target=document.querySelector("#schedule-import-results");if(!target)return;
+  const found=sortedDraft(draft.rows), target=document.querySelector("#schedule-import-results");if(!target)return;
   const existing=new Set(events().map(e=>[e.domain,e.date,e.startTime,e.endTime].join("|")));
   target.innerHTML=(found.length?'<div class="section-head schedule-review-heading"><h2>Proposed schedule</h2><span class="muted">'+found.length+' shift'+(found.length===1?"":"s")+'</span></div>'+
     '<p class="schedule-hint">Check the shifts, then save. Tap Edit to change anything.</p>'+
@@ -338,7 +355,9 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
     const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
     const plain=parseImportedText(draft.raw,draft.domain,yr,mo);
     const merged=new Map([...plain,...draft.ocrRows].map(e=>[[e.domain,e.date,e.startTime,e.endTime].join("|"),e]));
-    draft.rows=window.CommandImportParser.proposeClippedPrevious(draft.raw,[...merged.values()],draft.domain);
+    draft.rows=window.CommandImportParser.proposeClippedPrevious(draft.raw,
+      window.CommandImportParser.reconcileRows([...merged.values()],draft.domain,usualWorkdays()),draft.domain);
+    sortedDraft(draft.rows);
     importPreview();
     status.textContent=draft.rows.length+" proposed shift"+(draft.rows.length===1?"":"s")+" ready to review.";
    }
@@ -359,6 +378,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
   if(action==="schedule-delete"){if(confirm("Delete this event"+(events().find(x=>x.id===b.dataset.id)?.repeat==="weekly"?" and all its repeats":"")+"?")){updateEvents(events().filter(e=>e.id!==b.dataset.id));closeSheet();toast("Event deleted");}}
   if(action==="schedule-import"){importForm();}
   if(action==="schedule-ocr"){readScreenshots();}
+  if(action==="schedule-workweek"){workweekForm();}
   if(action==="schedule-review-toggle"){toggleRow(+b.dataset.index);return true;}
    if(action==="schedule-review-done"){toggleRow(+b.dataset.index,true);return true;}
    if(action==="schedule-add-review"){
@@ -379,7 +399,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
    draft.domain=document.querySelector("#import-domain").value;
    draft.raw=document.querySelector("#schedule-raw-text").value;
    const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
-    draft.rows=parseImportedText(draft.raw,draft.domain,yr,mo);
+    draft.rows=window.CommandImportParser.reconcileRows(parseImportedText(draft.raw,draft.domain,yr,mo),draft.domain,usualWorkdays());
     draft.ocrRows=[];
    importPreview();
   }
@@ -404,6 +424,13 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
   return false;
  }
  function handleSubmit(form){
+  if(form.id==="schedule-workweek-form"){
+    const days=new FormData(form).getAll("usualDay").map(Number).filter(n=>Number.isInteger(n)&&n>=0&&n<=6);
+    if(!days.length){alert("Choose at least one usual workday.");return true;}
+    setSchedulePrefs({usualWorkdays:workWeekOrder.filter(d=>days.includes(d))});
+    closeSheet();openSchedule(false);toast("Usual workdays saved");
+    return true;
+  }
   if(form.id==="schedule-event-form"){
    const values=new FormData(form);
    const id=form.dataset.id||uid();
