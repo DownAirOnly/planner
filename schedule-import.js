@@ -65,20 +65,40 @@ function rowDate(prefix,lines,index,ctx){
  }
  return "";
 }
+function parkFrom(text){
+ const s=clean(text);
+ if(/\b(?:City\s*Walk|CityWalk|CW)\b/i.test(s))return "CityWalk";
+ if(/\b(?:USF|Universal Studios Florida)\b/i.test(s)&&!/\bIOA\b/i.test(s))return "USF";
+ if(/\b(?:IOA|Islands of Adventure)\b/i.test(s))return "IOA";
+ return "IOA"; // Current work location default. Changeable during review.
+}
 function locationFrom(text,domain){
  if(domain!=="work")return "";
  const s=clean(text).replace(/\s*\/\s*/g,"/");
- if(/\bIOA\s*\/\s*Lost\b|\bLost\s+Continent\b/i.test(s))return "IOA · Lost Continent";
- if(/\bHogsmeade\b/i.test(s))return "IOA · Hogsmeade";
- if(/\bMarvel\b/i.test(s))return "IOA · Marvel";
- if(/\bPort of Entry\b/i.test(s))return "IOA · Port of Entry";
- if(/\bUSF\s*\/\s*London\b/i.test(s))return "USF · London";
- if(/\bUSF\s*\/\s*San Francisco\b/i.test(s))return "USF · San Francisco";
+ if(/\bIOA\s*\/\s*Lost\b|\bLost\s+Continent\b/i.test(s))return "Lost Continent";
+ if(/\bHogsmeade\b/i.test(s))return "Hogsmeade";
+ if(/\bMarvel\b/i.test(s))return "Marvel";
+ if(/\bPort of Entry\b/i.test(s))return "Port of Entry";
+ if(/\bUSF\s*\/\s*London\b/i.test(s))return "London";
+ if(/\bUSF\s*\/\s*San Francisco\b/i.test(s))return "San Francisco";
  return "";
 }
-function makeEvent(date,time,domain,location){
- return{id:uid(),domain,title:domain==="work"?"Work shift":domain==="school"?"Class":"Event",
-  date,startTime:time.startTime,endTime:time.endTime,allDay:false,location:location||"",notes:"",
+function activityFrom(text){
+ const s=clean(text),match=s.match(/\b(Red|Orange|Yellow|Green|Blue|Purple)\s*Zone\b/i);
+ if(match)return {assignment:"zones",zoneColor:match[1].toLowerCase(),assignmentEstimated:false};
+ if(/\bRTC\b/i.test(s))return {assignment:"rtc",zoneColor:"",assignmentEstimated:false};
+ if(/\bDetail\b/i.test(s))return {assignment:"detail",zoneColor:"",assignmentEstimated:false};
+ if(/\bZones?\b/i.test(s))return {assignment:"zones",zoneColor:"",assignmentEstimated:false};
+ if(/\bLead(?:\s+Attn?d)?\b/i.test(s))return {assignment:"lead",zoneColor:"",assignmentEstimated:true};
+ return {assignment:"",zoneColor:"",assignmentEstimated:false};
+}
+function makeEvent(date,time,domain,description,confidence="high",reason="Date and times found"){
+ const assignment=domain==="work"?activityFrom(description):{assignment:"",zoneColor:"",assignmentEstimated:false};
+ return {id:uid(),domain,title:domain==="work"?"Work shift":domain==="school"?"Class":"Event",
+  date,startTime:time.startTime,endTime:time.endTime,allDay:false,
+  park:domain==="work"?parkFrom(description):"",location:locationFrom(description,domain),notes:"",
+  assignment:assignment.assignment,zoneColor:assignment.zoneColor,assignmentEstimated:assignment.assignmentEstimated,
+  dateConfidence:confidence,confidenceReason:reason,estimatedDate:confidence!=="high",
   repeat:"none",weekdays:[],until:""};
 }
 function unique(rows){const seen=new Set();return rows.filter(e=>{
@@ -94,17 +114,17 @@ function parseText(raw,domain,year,month){
   const prefix=lines[i].slice(0,t.index).trim();
   const date=rowDate(prefix,lines,i,ctx);
   let description=lines[i];
-  for(let k=i+1;k<Math.min(lines.length,i+5);k++){
+  for(let k=i+1;k<Math.min(lines.length,i+6);k++){
    if(timeRange(lines[k])||dayFromPrefix(lines[k]))break;
    description+=" "+lines[k];
   }
-  candidates.push({date,time:t,location:locationFrom(description,domain),estimatedDate:false});
+  // A day number beside the shift is strongest. The previous line or month
+  // heading supplies context for less certain OCR matches.
+  const directlyLabeled=!!(explicitDate(prefix,ctx)||dayFromPrefix(prefix));
+  candidates.push({date,time:t,description,confidence:directlyLabeled?"high":"medium",reason:directlyLabeled?"Date beside shift":"Date taken from nearby label"});
  }
- // If OCR recognized a time range but lost its date label, propose a nearby
- // date from neighboring shifts and clearly flag it for review.
  const move=(iso,days)=>{
-  const [y,m,d]=iso.split("-").map(Number);
-  const dt=new Date(y,m-1,d+days);
+  const [y,m,d]=iso.split("-").map(Number),dt=new Date(y,m-1,d+days);
   return dateIso(dt.getFullYear(),dt.getMonth()+1,dt.getDate());
  };
  for(let i=0;i<candidates.length;i++){
@@ -114,11 +134,9 @@ function parseText(raw,domain,year,month){
   let guessed="";
   if(prev>=0)guessed=move(candidates[prev].date,i-prev);
   else if(next<candidates.length)guessed=move(candidates[next].date,i-next);
-  if(guessed){candidates[i].date=guessed;candidates[i].estimatedDate=true;}
+  if(guessed){candidates[i].date=guessed;candidates[i].confidence="low";candidates[i].reason="Date inferred from neighboring shifts";}
  }
- const results=candidates.filter(row=>row.date).map(row=>({
-  ...makeEvent(row.date,row.time,domain,row.location),estimatedDate:row.estimatedDate
- }));
+ const results=candidates.filter(row=>row.date).map(row=>makeEvent(row.date,row.time,domain,row.description,row.confidence,row.reason));
  return unique(results).slice(0,100);
 }
 function wordsFromTsv(tsv){
@@ -169,7 +187,7 @@ function parseTsv(tsv,raw,domain,year,month){
   // Capture text beneath this shift card, stopping before another shift row.
   const nextTimeY=Math.min(maxY+1,...timeLines.filter(l=>l.center>line.center+18).map(l=>l.center));
   const desc=words.filter(w=>w.left>maxX*.2&&w.center>=line.center-15&&w.center<Math.min(nextTimeY-20,line.center+165)).sort((a,b)=>a.center-b.center||a.left-b.left).map(w=>w.text).join(" ");
-  out.push(makeEvent(date,t,domain,locationFrom(desc,domain)));
+  out.push(makeEvent(date,t,domain,desc,"medium","Date matched to screenshot day column"));
  }
  return unique(out).slice(0,100);
 }
