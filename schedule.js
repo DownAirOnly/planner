@@ -221,7 +221,8 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
    '<div class="field"><label class="checkbox-label"><input type="checkbox" name="allDay" '+(item.allDay?"checked":"")+'> All day (no times)</label></div>'+
    '<div id="event-work-fields" '+(domain==="work"?"":"hidden")+'>'+workFields(item,"")+'</div>'+ 
    '<div class="field event-general-location" '+(domain==="work"?"hidden":"")+'><label for="ev-location">Location (optional)</label><input id="ev-location" name="generalLocation" value="'+val("location")+'"></div>'+
-   '<div class="field"><label for="ev-notes">Notes (optional)</label><textarea id="ev-notes" name="notes" rows="2">'+esc(item.notes||"")+'</textarea></div>'+
+   '<div id="event-break-fields" '+(domain==="work"?"":"hidden")+'>'+breakFields(item,"")+'</div>'+
+    '<div class="field"><label for="ev-notes">Notes (optional)</label><textarea id="ev-notes" name="notes" rows="2">'+esc(item.notes||"")+'</textarea></div>'+
    '<div class="field"><label for="ev-repeat">Repeat</label><select id="ev-repeat" name="repeat"><option value="none" '+(item.repeat!=="weekly"?"selected":"")+'>Does not repeat</option><option value="weekly" '+(item.repeat==="weekly"?"selected":"")+'>Every week</option></select></div>'+
    '<div class="schedule-repeat-options" id="schedule-repeat-options" '+(item.repeat==="weekly"?"":"hidden")+'><div class="field"><label>On these days</label><div class="weekday-row">'+DAYS.map((d,i)=>'<label class="weekday-check"><input type="checkbox" name="weekday" value="'+i+'" '+((item.weekdays||[fromDate(date)?.getDay()]).includes(i)?"checked":"")+'><span>'+d+'</span></label>').join("")+'</div></div>'+
    '<div class="field"><label for="ev-until">Repeat until (optional)</label><input id="ev-until" type="date" name="until" value="'+val("until")+'"></div><p class="schedule-hint">Editing or deleting a repeating event changes the whole series.</p></div>'+
@@ -265,12 +266,15 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
       const needsEdit=!row.startTime||!row.endTime;
       const detail=row.confidenceReason||(!row.startTime||!row.endTime?"Times could not be read":"Date and time inferred");
       const status=(!row.startTime||!row.endTime)?"Times need review":fmtTime(row);
+      const totals=timekeeping.shiftTotals(row);
+      const hours=totals.scheduled!=null?timekeeping.minutesLabel(totals.scheduled)+" scheduled · "+totals.breaks+"m break · "+timekeeping.minutesLabel(totals.adjusted)+" adjusted":"Hours need review";
       const detailHtml=(row.domain==="work"?workFields(row,i):
         '<div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div>');
       return '<div class="schedule-proposed-row" data-review-row="'+i+'">'+
         '<div class="schedule-proposed-top"><label class="schedule-proposed-check"><input type="checkbox" name="include-'+i+'" '+(duplicate||row._include===false||needsEdit?"":"checked")+' aria-label="Include shift '+(i+1)+'">'+
           '<span class="schedule-proposed-main"><strong>'+esc(labelDate(row.date))+'</strong>'+
             '<span>'+esc(status)+'</span>'+
+            '<small class="schedule-import-hours">'+esc(hours)+'</small>'+
             '<small class="schedule-work-summary'+zoneStyle(row)+'">'+esc(row.domain==="work"?workMeta(row):displayLocation(row))+'</small>'+
             '<small class="schedule-confidence confidence-'+(row.reviewed?"reviewed":level)+'" title="'+esc(detail)+'">'+confText+(row.reviewed||level==="high"?"":" · "+esc(detail))+'</small>'+
           '</span></label>'+
@@ -282,6 +286,7 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
           '<div class="field"><label>Start</label><input type="time" name="start-'+i+'" value="'+esc(row.startTime)+'"></div></div>'+
           '<div class="form-grid"><div class="field"><label>End</label><input type="time" name="end-'+i+'" value="'+esc(row.endTime)+'"></div></div>'+
           detailHtml+
+          (row.domain==="work"?breakFields(row,i):"")+
           '<div class="field"><label>Notes</label><input name="notes-'+i+'" value="'+esc(row.notes)+'"></div>'+
           '<button type="button" class="button secondary" data-action="schedule-review-done" data-index="'+i+'">Done editing</button>'+
         '</div></div>';
@@ -304,6 +309,7 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
     assignment:String(v.get("assignment-"+i)||""),
     zoneColor:String(v.get("zoneColor-"+i)||""),
     notes:String(v.get("notes-"+i)||"").trim(),
+    breakMinutes:v.get("breakMode-"+i)==="manual"?timekeeping.validOverride(v.get("breakMinutes-"+i)):null,
     _include:v.has("include-"+i)
   }));
  }
@@ -311,36 +317,16 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
   const fields=document.querySelector("#schedule-review-"+index);
   const button=document.querySelector('[data-action="schedule-review-toggle"][data-index="'+index+'"]');
   if(!fields)return;
-  fields.hidden=forceClose?true:!fields.hidden;
-  if(button){button.textContent=fields.hidden?"Edit":"Close";button.setAttribute("aria-expanded",String(!fields.hidden));}
   if(forceClose){
-    const form=document.querySelector("#schedule-import-form"),row=ui.workingImport?.rows[index];
-    if(!form||!row)return;
-    const v=new FormData(form),priorDate=row.date,date=parseIso(v.get("date-"+index))||row.date;
-    Object.assign(row,{
-      date,startTime:String(v.get("start-"+index)||""),endTime:String(v.get("end-"+index)||""),
-      location:String(v.get("location-"+index)||"").trim(),
-      park:String(v.get("park-"+index)||row.park||"IOA"),
-      assignment:String(v.get("assignment-"+index)||""),
-      zoneColor:String(v.get("zoneColor-"+index)||"")
-    });
-    row.estimatedDate=false;row.reviewed=true;row.assignmentEstimated=false;row.locationEstimated=false;
-    const root=document.querySelector('[data-review-row="'+index+'"]');
-    if(root){
-      const name=root.querySelector(".schedule-proposed-main strong"),time=root.querySelector(".schedule-proposed-main > span");
-      const meta=root.querySelector(".schedule-work-summary");
-      const confidence=root.querySelector(".schedule-confidence");
-      if(name)name.textContent=labelDate(row.date);
-      if(time)time.textContent=fmtTime(row)||"Time needs review";
-      if(meta){meta.textContent=row.domain==="work"?workMeta(row):displayLocation(row);meta.className="schedule-work-summary"+zoneStyle(row);}
-      if(confidence){confidence.textContent="Reviewed";confidence.className="schedule-confidence confidence-reviewed";}
-    }
-    if(row.date!==priorDate){
-      preserveReviewEdits();
-      sortedDraft(ui.workingImport.rows);
-      importPreview();
-    }
+    preserveReviewEdits();
+    const row=ui.workingImport?.rows[index];
+    if(row){row.reviewed=true;row.estimatedDate=false;row.assignmentEstimated=false;row.locationEstimated=false;}
+    sortedDraft(ui.workingImport.rows);
+    importPreview();
+    return;
   }
+  fields.hidden=!fields.hidden;
+  if(button){button.textContent=fields.hidden?"Edit":"Close";button.setAttribute("aria-expanded",String(!fields.hidden));}
  }
  function loadTesseract(){
   if(window.Tesseract&&typeof window.Tesseract.createWorker==="function")return Promise.resolve();
@@ -452,7 +438,7 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
      const month=document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7);
      const date=ui.selected.startsWith(month)?ui.selected:month+"-01";
      preserveReviewEdits();
-     draft.rows.push({id:uid(),domain:draft.domain,title:draft.domain==="work"?"Work shift":draft.domain==="school"?"Class":"Event",date,startTime:"",endTime:"",allDay:false,location:"",notes:"",repeat:"none",weekdays:[],until:""});
+     draft.rows.push({id:uid(),domain:draft.domain,title:draft.domain==="work"?"Work shift":draft.domain==="school"?"Class":"Event",date,startTime:"",endTime:"",allDay:false,location:"",notes:"",breakMinutes:null,repeat:"none",weekdays:[],until:""});
      importPreview();
       const newIndex=draft.rows.length-1;
       const target=document.querySelector("#schedule-review-"+newIndex);
@@ -480,9 +466,15 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
    }
    if(target?.id==="ev-domain"){
     const isWork=target.value==="work";
-    const work=document.querySelector("#event-work-fields"),other=document.querySelector(".event-general-location");
+    const work=document.querySelector("#event-work-fields"),other=document.querySelector(".event-general-location"),breaks=document.querySelector("#event-break-fields");
     if(work)work.hidden=!isWork;
     if(other)other.hidden=isWork;
+    if(breaks)breaks.hidden=!isWork;
+    return true;
+   }
+   if(target?.classList?.contains("schedule-break-mode")){
+    const manual=target.closest(".schedule-break-inputs")?.querySelector(".schedule-break-manual");
+    if(manual)manual.hidden=target.value!=="manual";
     return true;
    }
    if(target?.name==="repeat"){const box=document.querySelector("#schedule-repeat-options");if(box)box.hidden=target.value!=="weekly";return true;}
@@ -511,7 +503,12 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
    if(repeat==="weekly"&&!weekdays.length){alert("Select at least one repeat day.");return true;}
    if(until&&until<date){alert("Repeat-until date cannot be before the start date.");return true;}
    const domain=String(values.get("domain"));
-   const item={id,domain,title:String(values.get("title")||"").trim().slice(0,140),date,startTime:allDay?"":startTime,endTime:allDay?"":endTime,allDay,
+   let manualBreak=null;
+   if(domain==="work"&&!allDay){
+     try{manualBreak=breakValue(values,"",{startTime,endTime,allDay});}
+     catch(err){alert(err.message);return true;}
+   }
+   const item={id,domain,title:String(values.get("title")||"").trim().slice(0,140),date,startTime:allDay?"":startTime,endTime:allDay?"":endTime,allDay,breakMinutes:manualBreak,
     location:String(values.get(domain==="work"?"location":"generalLocation")||"").trim().slice(0,200),
     park:domain==="work"?String(values.get("park")||"IOA"):"",assignment:domain==="work"?String(values.get("assignment")||""):"",
     zoneColor:domain==="work"?String(values.get("zoneColor")||""):"",
@@ -526,14 +523,19 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
    for(let i=0;i<draft.rows.length;i++){
     if(!v.has("include-"+i))continue;
     const date=parseIso(v.get("date-"+i)),startTime=String(v.get("start-"+i)||""),endTime=String(v.get("end-"+i)||"");
-    if(!date||!startTime||!endTime){alert("Check the dates and times for selected events.");return true;}
+    if(!date||!startTime||!endTime||timekeeping.scheduledMinutes({startTime,endTime})==null){alert("Check the dates and times for selected events.");return true;}
+    let manualBreak=null;
+    if(draft.domain==="work"){
+      try{manualBreak=breakValue(v,i,{startTime,endTime});}
+      catch(err){alert("Shift "+(i+1)+": "+err.message);return true;}
+    }
     const key=[draft.domain,date,startTime,endTime].join("|");
     if(existing.has(key))continue;existing.add(key);
     incoming.push({id:uid(),domain:draft.domain,title:String(v.get("title-"+i)||"").trim()||"Event",date,startTime,endTime,allDay:false,
       location:String(v.get("location-"+i)||"").trim(),park:draft.domain==="work"?String(v.get("park-"+i)||"IOA"):"",
       assignment:draft.domain==="work"?String(v.get("assignment-"+i)||""):"",
       zoneColor:draft.domain==="work"?String(v.get("zoneColor-"+i)||""):"",
-      notes:String(v.get("notes-"+i)||"").trim(),repeat:"none",weekdays:[],until:""});
+      notes:String(v.get("notes-"+i)||"").trim(),breakMinutes:manualBreak,repeat:"none",weekdays:[],until:""});
    }
    if(!incoming.length){toast("No new events selected");return true;}
    updateEvents([...events(),...incoming]);ui.domain=draft.domain;ui.selected=incoming[0].date;ui.workingImport=null;closeSheet();toast(incoming.length+" event"+(incoming.length===1?"":"s")+" added");return true;
@@ -547,6 +549,7 @@ window.CommandSchedule={create,validate:(e)=>({
  id:String(e.id||uid()).slice(0,150),domain:Object.hasOwn(DOMAINS,e.domain)?e.domain:"personal",
  title:String(e.title||"Untitled event").slice(0,140),date:parseIso(e.date),startTime:/^\d\d:\d\d$/.test(e.startTime||"")?e.startTime:"",endTime:/^\d\d:\d\d$/.test(e.endTime||"")?e.endTime:"",
  allDay:!!e.allDay,location:String(e.location||"").slice(0,200),notes:String(e.notes||"").slice(0,2000),
+ breakMinutes:timekeeping.validOverride(e.breakMinutes),
  park:["IOA","USF","CityWalk","Other"].includes(e.park)?e.park:(e.domain==="work"?"IOA":""),
  assignment:["lead","zones","rtc","detail","other"].includes(e.assignment)?e.assignment:"",
  zoneColor:["red","orange","yellow","green","blue","purple"].includes(e.zoneColor)?e.zoneColor:"",
