@@ -227,5 +227,38 @@ function proposeClippedPrevious(raw,rows,domain){
  return [estimated,...ordered];
 }
 
-window.CommandImportParser={parseText,parseTsv,countRanges,context,timeRange,proposeClippedPrevious};
+/**
+ * Merge independent OCR passes into a single proposed schedule. A date inferred
+ * from neighboring rows is not proof of a shift on a non-usual workday.
+ * Explicitly observed dates still display even when they're outside the usual pattern.
+ */
+function reconcileRows(rows,domain,usualWorkdays=[5,6,0,1,2]){
+ const allowed=new Set((Array.isArray(usualWorkdays)?usualWorkdays:[]).map(Number));
+ const confidenceScore={high:300,medium:200,low:100};
+ const validDate=value=>/^\d{4}-\d\d-\d\d$/.test(value||"")&&!Number.isNaN(new Date(value+"T12:00:00").getTime());
+ const strength=e=>(confidenceScore[e.dateConfidence]||100)+(e.startTime&&e.endTime?15:0)+(e.location?4:0)+(e.assignment?2:0)+(e.estimatedDate?-3:0);
+ const map=new Map();
+ for(const e of rows||[]){
+  if(!e||!validDate(e.date))continue;
+  const weekday=new Date(e.date+"T12:00:00").getDay();
+  // Never propose an off-pattern day solely from sequential-day guessing.
+  if(domain==="work"&&allowed.size&&e.dateConfidence==="low"&&
+    !allowed.has(weekday)&&/neighbor|infer/i.test(String(e.confidenceReason||"")))continue;
+  const key=[e.domain,e.date,e.startTime,e.endTime].join("|");
+  const old=map.get(key);
+  if(!old||strength(e)>strength(old)){
+   map.set(key,old?{
+     ...e,
+     location:e.location||old.location||"",
+     assignment:e.assignment||old.assignment||"",
+     zoneColor:e.zoneColor||old.zoneColor||"",
+     park:e.park||old.park||"IOA"
+    }:e);
+  }
+ }
+ const merged=[...map.values()].sort((a,b)=>a.date.localeCompare(b.date)||String(a.startTime||"").localeCompare(String(b.startTime||"")));
+ return fillSharedWorkLocation(merged,domain);
+}
+
+window.CommandImportParser={parseText,parseTsv,countRanges,context,timeRange,proposeClippedPrevious,reconcileRows};
 })();
