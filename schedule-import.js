@@ -191,5 +191,33 @@ function parseTsv(tsv,raw,domain,year,month){
  }
  return unique(out).slice(0,100);
 }
-window.CommandImportParser={parseText,parseTsv,countRanges,context,timeRange};
+function proposeClippedPrevious(raw,rows,domain){
+ if(domain!=="work"||!rows.length)return rows;
+ const ordered=[...rows].sort((a,b)=>a.date.localeCompare(b.date));
+ const first=ordered[0];
+ const parts=first.date?.split("-").map(Number)||[];
+ if(parts.length!==3||parts[2]<2)return rows;
+ const previous=new Date(parts[0],parts[1]-1,parts[2]-1);
+ const date=dateIso(previous.getFullYear(),previous.getMonth()+1,previous.getDate());
+ if(!date||rows.some(e=>e.date===date))return rows;
+ const lines=String(raw||"").split(/\r?\n/).map(clean);
+ // A weekday/day label before the first recognized shift is evidence,
+ // but is NOT evidence of the missing time. Mark it low-confidence.
+ const firstRange=lines.findIndex(x=>timeRange(x));
+ const prefix=lines.slice(0,firstRange>=0?firstRange:Math.min(lines.length,30));
+ const weekday=WEEKDAYS[previous.getDay()];
+ const indicated=prefix.some(x=>{
+  const short=x.replace(/[^A-Za-z0-9 ]/g," ").trim().toLowerCase();
+  return new RegExp("^(?:("+weekday+"(?:day)?)(?:\\s+"+previous.getDate()+")?|"+previous.getDate()+")$").test(short);
+ });
+ if(!indicated)return rows;
+ const estimated={
+  ...makeEvent(date,{startTime:"",endTime:""},domain,"","low","Previous day visible, but shift hours could not be read"),
+  _include:false,estimatedDate:true,confidenceReason:"Day inferred from calendar sequence; hours missing",assignment:"",assignmentEstimated:false,
+  park:first.park||"IOA",location:first.location||""
+ };
+ return [estimated,...ordered];
+}
+
+window.CommandImportParser={parseText,parseTsv,countRanges,context,timeRange,proposeClippedPrevious};
 })();
