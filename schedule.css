@@ -130,3 +130,26 @@
 
 .schedule-estimated-date{color:var(--amber)!important;font-weight:680}
 .schedule-row-editor .button{margin-top:4px}
+
+/* Work assignments, colored zones, and explainable OCR confidence */
+.work-fields{display:grid;gap:12px;padding:11px 0 3px}
+.work-fields .field{margin:0}
+.work-zone-field[hidden]{display:none}
+.schedule-work-summary{display:block;line-height:1.4;color:var(--muted)}
+.schedule-work-summary.zone-red,.schedule-event.zone-red .schedule-event-time{color:#f4a3a6}
+.schedule-work-summary.zone-orange,.schedule-event.zone-orange .schedule-event-time{color:#ffbe8a}
+.schedule-work-summary.zone-yellow,.schedule-event.zone-yellow .schedule-event-time{color:#efd68d}
+.schedule-work-summary.zone-green,.schedule-event.zone-green .schedule-event-time{color:#a6e5be}
+.schedule-work-summary.zone-blue,.schedule-event.zone-blue .schedule-event-time{color:#9fc9ff}
+.schedule-work-summary.zone-purple,.schedule-event.zone-purple .schedule-event-time{color:#cdb9ff}
+.schedule-event.zone-red .schedule-event-line{background:#ef777b}
+.schedule-event.zone-orange .schedule-event-line{background:#f5a968}
+.schedule-event.zone-yellow .schedule-event-line{background:#e6c966}
+.schedule-event.zone-green .schedule-event-line{background:#8dd6a6}
+.schedule-event.zone-blue .schedule-event-line{background:#7eafea}
+.schedule-event.zone-purple .schedule-event-line{background:#ac95e4}
+.schedule-confidence{font-size:11px!important;line-height:1.35}
+.schedule-confidence.confidence-high{color:#a6c7bd!important}
+.schedule-confidence.confidence-medium{color:#f2c989!important}
+.schedule-confidence.confidence-low{color:#f1aaa6!important}
+.schedule-confidence.confidence-reviewed{color:var(--mint)!important}
