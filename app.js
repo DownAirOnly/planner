@@ -11,7 +11,8 @@
   const today = () => { const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
   const niceDate = (s) => { if(!s)return ""; const d=new Date(s+"T12:00:00"); return Number.isNaN(d.getTime()) ? String(s) : d.toLocaleDateString(undefined,{month:"short",day:"numeric",year:d.getFullYear()===new Date().getFullYear()?undefined:"numeric"});};
   const defaults = () => ({
-    schemaVersion:2,
+    schemaVersion:3,
+    schedulePrefs:{usualWorkdays:[5,6,0,1,2]},
     events:[],
     projects:[
       {id:"everyday",title:"Everyday",category:"Software",status:"active",description:"Fitness, nutrition, and finance PWA.",next:"Finalize Workout Buddy's approved exercise swaps.",reviewDate:"",updatedAt:"2026-11-06"},
@@ -46,12 +47,15 @@
     const tasks=obj.tasks.slice(0,2500).map((t)=>({id:cleanText(t.id)||uid(),title:cleanText(t.title)||"Untitled task",projectId:projectIds.has(t.projectId)?t.projectId:"",status:["open","in_progress","waiting","blocked","done"].includes(t.status)?t.status:"open",priority:["high","medium","low"].includes(t.priority)?t.priority:"medium",dueDate:cleanText(t.dueDate),notes:cleanText(t.notes)}));
     const ideas=obj.ideas.slice(0,1000).map((i)=>({id:cleanText(i.id)||uid(),title:cleanText(i.title)||"Untitled idea",description:cleanText(i.description),createdAt:cleanText(i.createdAt)}));
     const events=(Array.isArray(obj.events)?obj.events:[]).slice(0,4000).filter(e=>e&&typeof e==="object").map(e=>window.CommandSchedule.validate(e)).filter(e=>e.date);
-    return {schemaVersion:2,projects,tasks,ideas,events};
+    const usual=Array.isArray(obj.schedulePrefs?.usualWorkdays)?obj.schedulePrefs.usualWorkdays:[5,6,0,1,2];
+    const usualWorkdays=[...new Set(usual.map(Number).filter(n=>Number.isInteger(n)&&n>=0&&n<=6))];
+    const schedulePrefs={usualWorkdays:usualWorkdays.length?usualWorkdays:[5,6,0,1,2]};
+    return {schemaVersion:3,projects,tasks,ideas,events,schedulePrefs};
   };
   let data;
   try { const stored=localStorage.getItem(KEY); data=stored?normalize(JSON.parse(stored)):defaults(); } catch(err){console.warn("Stored data could not be loaded.",err);data=defaults();}
   const state={view:"home",projectId:null,taskFilter:"open",query:""};
-  const schedule=window.CommandSchedule.create({getEvents:()=>data.events,updateEvents:(next)=>{data.events=next;save();render();},showSheet:(body)=>showSheet(body),closeSheet:()=>closeSheet(),toast:(message)=>toast(message),openSchedule:(scroll=true)=>{state.view="schedule";state.projectId=null;render();if(scroll)window.scrollTo({top:0,behavior:"instant"});}});
+  const schedule=window.CommandSchedule.create({getEvents:()=>data.events,updateEvents:(next)=>{data.events=next;save();render();},getSchedulePrefs:()=>data.schedulePrefs,setSchedulePrefs:(value)=>{data.schedulePrefs=value;save();render();},showSheet:(body)=>showSheet(body),closeSheet:()=>closeSheet(),toast:(message)=>toast(message),openSchedule:(scroll=true)=>{state.view="schedule";state.projectId=null;render();if(scroll)window.scrollTo({top:0,behavior:"instant"});}});
   function save(){
     try{localStorage.setItem(KEY,JSON.stringify(data));return true;}
     catch(err){alert("Could not save on this device. Export a backup before continuing.");console.error(err);return false;}
