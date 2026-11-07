@@ -153,3 +153,12 @@
 .schedule-confidence.confidence-medium{color:#f2c989!important}
 .schedule-confidence.confidence-low{color:#f1aaa6!important}
 .schedule-confidence.confidence-reviewed{color:var(--mint)!important}
+
+/* Workweek preferences for OCR and manual schedule planning */
+.schedule-workweek-note{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 13px;margin:0 0 15px;border:1px solid var(--line);background:var(--panel);border-radius:12px;color:var(--muted);font-size:12px}
+.schedule-workweek-note strong{color:var(--text);font-weight:700}
+.schedule-workweek-note button{background:none;border:0;color:var(--mint);font-size:12px;font-weight:720;padding:5px 3px}
+.schedule-workweek-import{display:flex;color:var(--muted);font-size:12px;padding:0 0 6px}
+.schedule-weekday-prefs{display:grid;gap:7px;margin:18px 0}
+.schedule-workday-option{display:flex;align-items:center;gap:13px;border:1px solid var(--line);border-radius:12px;padding:13px 14px;background:var(--panel);color:var(--text);font-weight:650;font-size:14px;cursor:pointer}
+.schedule-workday-option input{width:19px;height:19px;accent-color:var(--mint);flex-shrink:0}
