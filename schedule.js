@@ -24,7 +24,7 @@ const displayLocation=e=>{
  if(e.domain!=="work")return loc;
  return park==="IOA"?loc:[park,loc].filter(Boolean).join(" · ");
 };
-const workMeta=e=>{const assignment=assignmentLabel(e)+(e.assignmentEstimated?" (suggested)":"");const area=displayLocation(e);return [assignment,area].filter(Boolean).join(" · ");};
+const workMeta=e=>{const assignment=assignmentLabel(e)+(e.assignmentEstimated?" (suggested)":"");const area=displayLocation(e)+(e.locationEstimated?" (suggested)":"");return [assignment,area].filter(Boolean).join(" · ");};
 const zoneStyle=e=>e.assignment==="zones"&&!!e.zoneColor&&ZONE_COLORS.some(x=>x[0]===e.zoneColor)?' zone-'+e.zoneColor:"";
 const options=(arr,value)=>arr.map(([key,label])=>'<option value="'+esc(key)+'" '+(key===value?"selected":"")+'>'+esc(label)+'</option>').join("");
 function workFields(e,suffix){
@@ -184,7 +184,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
       const duplicate=existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
       const confidence=(!row.startTime||!row.endTime)?"low":(row.dateConfidence|| (row.estimatedDate?"low":"medium"));
       const level=typeof confidence==="string"?confidence:"medium";
-      const confText=level==="high"?"High confidence":level==="medium"?"Medium confidence":"Low confidence";
+      const confText=row.reviewed?"Reviewed":(level==="high"?"High confidence":level==="medium"?"Medium confidence":"Low confidence");
       const needsEdit=!row.startTime||!row.endTime;
       const detail=row.confidenceReason||(!row.startTime||!row.endTime?"Times could not be read":"Date and time inferred");
       const status=(!row.startTime||!row.endTime)?"Times need review":fmtTime(row);
@@ -195,7 +195,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
           '<span class="schedule-proposed-main"><strong>'+esc(labelDate(row.date))+'</strong>'+
             '<span>'+esc(status)+'</span>'+
             '<small class="schedule-work-summary'+zoneStyle(row)+'">'+esc(row.domain==="work"?workMeta(row):displayLocation(row))+'</small>'+
-            '<small class="schedule-confidence confidence-'+level+'" title="'+esc(detail)+'">'+confText+(level==="high"?"":" · "+esc(detail))+'</small>'+
+            '<small class="schedule-confidence confidence-'+(row.reviewed?"reviewed":level)+'" title="'+esc(detail)+'">'+confText+(row.reviewed||level==="high"?"":" · "+esc(detail))+'</small>'+
           '</span></label>'+
           '<button type="button" class="schedule-row-edit" data-action="schedule-review-toggle" data-index="'+i+'" aria-expanded="'+(needsEdit?"true":"false")+'">Edit</button></div>'+
         (duplicate?'<div class="schedule-duplicate-note">Already saved — unchecked</div>':"")+
@@ -256,7 +256,7 @@ function create({getEvents,updateEvents,showSheet,closeSheet,toast,openSchedule}
       if(time)time.textContent=fmtTime(row)||"Time needs review";
       if(meta){meta.textContent=row.domain==="work"?workMeta(row):displayLocation(row);meta.className="schedule-work-summary"+zoneStyle(row);}
       if(confidence){confidence.textContent="Reviewed";confidence.className="schedule-confidence confidence-reviewed";}
-      row.estimatedDate=false;
+      row.estimatedDate=false;row.reviewed=true;row.assignmentEstimated=false;row.locationEstimated=false;
     }
   }
  }
