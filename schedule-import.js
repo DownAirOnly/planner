@@ -105,6 +105,14 @@ function unique(rows){const seen=new Set();return rows.filter(e=>{
  const key=[e.domain,e.date,e.startTime,e.endTime].join("|");
  if(seen.has(key))return false;seen.add(key);return true;
 }).sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));}
+function fillSharedWorkLocation(rows,domain){
+ if(domain!=="work")return rows;
+ const known=[...new Set(rows.map(e=>e.location).filter(Boolean))];
+ if(known.length!==1)return rows;
+ const park=[...new Set(rows.filter(e=>e.location).map(e=>e.park).filter(Boolean))];
+ if(park.length>1)return rows;
+ return rows.map(e=>e.location?e:{...e,location:known[0],park:park[0]||"IOA",locationEstimated:true});
+}
 function countRanges(text){return String(text||"").split(/\r?\n/).reduce((n,line)=>n+(timeRange(line)?1:0),0);}
 function parseText(raw,domain,year,month){
  const lines=String(raw||"").split(/\r?\n/).map(clean).filter(Boolean).slice(0,500);
@@ -137,7 +145,7 @@ function parseText(raw,domain,year,month){
   if(guessed){candidates[i].date=guessed;candidates[i].confidence="low";candidates[i].reason="Date inferred from neighboring shifts";}
  }
  const results=candidates.filter(row=>row.date).map(row=>makeEvent(row.date,row.time,domain,row.description,row.confidence,row.reason));
- return unique(results).slice(0,100);
+ return unique(fillSharedWorkLocation(results,domain)).slice(0,100);
 }
 function wordsFromTsv(tsv){
  const lines=String(tsv||"").split(/\r?\n/);
@@ -189,7 +197,7 @@ function parseTsv(tsv,raw,domain,year,month){
   const desc=words.filter(w=>w.left>maxX*.2&&w.center>=line.center-15&&w.center<Math.min(nextTimeY-20,line.center+165)).sort((a,b)=>a.center-b.center||a.left-b.left).map(w=>w.text).join(" ");
   out.push(makeEvent(date,t,domain,desc,"medium","Date matched to screenshot day column"));
  }
- return unique(out).slice(0,100);
+ return unique(fillSharedWorkLocation(out,domain)).slice(0,100);
 }
 function proposeClippedPrevious(raw,rows,domain){
  if(domain!=="work"||!rows.length)return rows;
