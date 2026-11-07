@@ -1,5 +1,5 @@
-const CACHE_NAME="command-v6-b2";
-const FILES=["./","./index.html","./styles.css","./app.js","./schedule.js","./schedule.css","./schedule-import.js","./icons.svg","./icon.svg","./manifest.webmanifest"];
+const CACHE_NAME="command-v7-b2";
+const FILES=["./","./index.html","./styles.css","./app.js","./timekeeping.js","./schedule.js","./schedule.css","./schedule-import.js","./icons.svg","./icon.svg","./manifest.webmanifest"];
 self.addEventListener("install",(event)=>{
   event.waitUntil(caches.open(CACHE_NAME).then((cache)=>cache.addAll(FILES.map((p)=>new URL(p,self.registration.scope).toString()))).then(()=>self.skipWaiting()));
 });
