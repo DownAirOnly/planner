@@ -12,3 +12,20 @@
 /* v10: tab identity lives in navigation, not redundant headings. */
 .page-heading-actions-only{justify-content:flex-end;margin:0 0 10px;min-height:0}
 .page-heading-actions-only .button{min-height:38px}
+
+/* v11 iPhone cold-launch navigation: safe-area below, not inside, tab bar. */
+@media(max-width:620px){
+ .tabbar{
+  bottom:env(safe-area-inset-bottom,0px);
+  padding:9px 6px 8px;
+  border-radius:18px;
+  background:#172022;
+  -webkit-backdrop-filter:none;
+  backdrop-filter:none;
+ }
+ .tabbar::after{
+  content:"";position:absolute;top:100%;left:0;right:0;
+  height:env(safe-area-inset-bottom,0px);
+  background:var(--bg);pointer-events:none;
+ }
+}

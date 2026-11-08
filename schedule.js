@@ -15,12 +15,12 @@ const uid=()=>crypto&&crypto.randomUUID?crypto.randomUUID():"event-"+Date.now()+
 const fmtTime=e=>e.allDay?"All day":[clock(e.startTime),clock(e.endTime)].filter(Boolean).join("–");
 const timekeeping=window.CommandTimekeeping;
 
-const ASSIGNMENTS=[["","Not set"],["lead","Lead"],["zones","Zones"],["rtc","RTC"],["detail","Detail"],["other","Other"]];
+const ASSIGNMENTS=[["","Not set"],["lead","Lead"],["support","Area Support"],["zones","Zones"],["rtc","RTC"],["detail","Detail"],["other","Other"]];
 const ZONE_COLORS=[["","Choose zone"],["red","Red Zone"],["orange","Orange Zone"],["yellow","Yellow Zone"],["green","Green Zone"],["blue","Blue Zone"],["purple","Purple Zone"]];
 const PARKS=[["IOA","Islands of Adventure"],["USF","Universal Studios Florida"],["CityWalk","CityWalk"],["Other","Other"]];
 const assignmentLabel=e=>e.assignment==="zones"?(ZONE_COLORS.find(x=>x[0]===e.zoneColor)?.[1]||"Zones"):(ASSIGNMENTS.find(x=>x[0]===e.assignment)?.[1]||"");
 const displayLocation=e=>{
- const loc=String(e.location||"").replace(/^IOA\s*[·/-]\s*/i,"").trim();
+ const loc=String(e.location||"").replace(/^IOA\s*[·/-]\s*/i,"").trim().replace(/^Hogsmeade(?: Village)?$/i,"Hogsmeade Village");
  const park=e.park||(/^(?:IOA|USF|CityWalk)\b/.exec(e.location||"")?.[0])||"IOA";
  if(e.domain!=="work")return loc;
  return park==="IOA"?loc:[park,loc].filter(Boolean).join(" · ");
@@ -81,7 +81,7 @@ function parseTimeRange(text){
 }
 function parseImportedText(raw,domain,year,month){return window.CommandImportParser.parseText(raw,domain,year,month);}
 function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSheet,closeSheet,toast,openSchedule}){
- const ui={domain:"work",mode:"week",periodMode:"work",selected:localDate(new Date()),fourWeekStart:localDate(new Date()),workingImport:null};
+ const ui={domain:"work",mode:"week",periodMode:"work",selected:localDate(new Date()),fourWeekStart:localDate(shiftDate(new Date(),-new Date().getDay())),workingImport:null};
  const events=()=>getEvents()||[];
  const usualWorkdays=()=>getSchedulePrefs?.()?.usualWorkdays||[5,6,0,1,2];
  const workWeekOrder=[5,6,0,1,2,3,4];
@@ -176,30 +176,33 @@ function nextEvent(domain){
    }).join("")+'</div></section>';
  }
  const heading=()=>{
-   const date=fromDate(ui.selected),format=ui.mode==="month"?{month:"long",year:"numeric"}:ui.mode==="week"?{month:"short",year:"numeric"}:{weekday:"long",month:"long",day:"numeric"};
-   if(ui.mode==="fourweeks")return labelDate(ui.fourWeekStart)+" – "+labelDate(localDate(shiftDate(fromDate(ui.fourWeekStart),27)));
-    return ui.domain==="work"&&ui.mode==="week"?periodHeader(period()):date.toLocaleDateString(undefined,format);
+   const date=fromDate(ui.selected);
+   if(ui.mode==="week"||ui.mode==="fourweeks"){
+     const visible=daysForView();
+     return labelDate(localDate(visible[0]))+" – "+labelDate(localDate(visible[visible.length-1]));
+   }
+   return date.toLocaleDateString(undefined,ui.mode==="month"?{month:"long",year:"numeric"}:{weekday:"long",month:"long",day:"numeric"});
  };
  function daysForView(){
    const selected=fromDate(ui.selected);
    if(ui.mode==="day")return[selected];
-    if(ui.mode==="fourweeks")return Array.from({length:28},(_,i)=>shiftDate(fromDate(ui.fourWeekStart),i));
+   if(ui.mode==="fourweeks")return Array.from({length:28},(_,i)=>shiftDate(fromDate(ui.fourWeekStart),i));
    if(ui.mode==="week"){
-     if(ui.domain==="work")return period().days.map(fromDate);
-     const start=shiftDate(selected,-((selected.getDay()+6)%7));
+     // Calendar weeks always start Sunday regardless of Work/Pay Week accounting.
+     const start=shiftDate(selected,-selected.getDay());
      return Array.from({length:7},(_,i)=>shiftDate(start,i));
    }
    const first=new Date(selected.getFullYear(),selected.getMonth(),1);
-   const start=shiftDate(first,-((first.getDay()+6)%7));
+   const start=shiftDate(first,-first.getDay());
    const last=new Date(selected.getFullYear(),selected.getMonth()+1,0);
-   const total=Math.ceil((((last.getDate()+((first.getDay()+6)%7))/7)))*7;
+   const total=Math.ceil((last.getDate()+first.getDay())/7)*7;
    return Array.from({length:total},(_,i)=>shiftDate(start,i));
  }
  function calendar(){
   const days=daysForView();
   let grid="";
   if(ui.mode!=="day"){
-    grid='<div class="schedule-cal-head">'+((ui.domain==="work"&&ui.mode==="week")||ui.mode==="fourweeks"?days.slice(0,7).map(d=>DAYS[d.getDay()].charAt(0)):["M","T","W","T","F","S","S"]).map(v=>'<span>'+v+'</span>').join("")+'</div><div class="schedule-cal-grid '+ui.mode+'">'+days.map(d=>{
+    grid='<div class="schedule-cal-head">'+["S","M","T","W","T","F","S"].map(v=>'<span>'+v+'</span>').join("")+'</div><div class="schedule-cal-grid '+ui.mode+'">'+days.map(d=>{
        const iso=localDate(d),matches=selectedEvents(iso),active=iso===ui.selected,other=d.getMonth()!==fromDate(ui.selected).getMonth();
        let dots="";
        if(matches.length)dots='<span class="schedule-dots">'+[...new Set(matches.map(e=>e.domain))].slice(0,3).map(domain=>'<i class="'+domain+'"></i>').join("")+'</span>';
@@ -432,11 +435,11 @@ function eventForm(item={}){
   if(action==="schedule-jump"){ui.domain=b.dataset.domain||"work";if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="fourweeks"))ui.mode="week";if(b.dataset.date){ui.selected=b.dataset.date;ui.mode="week";ui.periodMode="work";}openSchedule();return true;}
   if(!action.startsWith("schedule-"))return false;
   if(action==="schedule-domain"){ui.domain=b.dataset.domain;if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="fourweeks"))ui.mode="week";openSchedule(false);}
-  if(action==="schedule-mode"){ui.mode=b.dataset.mode;openSchedule(false);}
+  if(action==="schedule-mode"){ui.mode=b.dataset.mode;if(ui.mode==="fourweeks"){const date=fromDate(ui.selected);ui.fourWeekStart=localDate(shiftDate(date,-date.getDay()));}openSchedule(false);}
   if(action==="schedule-period"){ui.periodMode=b.dataset.period==="pay"?"pay":"work";openSchedule(false);}
   if(action==="schedule-select"){ui.selected=b.dataset.date;openSchedule(false);}
   if(action==="schedule-prev"||action==="schedule-next"){const sign=action==="schedule-prev"?-1:1;const d=fromDate(ui.selected);if(ui.mode==="fourweeks"){ui.fourWeekStart=localDate(shiftDate(fromDate(ui.fourWeekStart),28*sign));ui.selected=ui.fourWeekStart;}else{ui.selected=localDate(ui.mode==="day"?shiftDate(d,sign):ui.mode==="week"?shiftDate(d,7*sign):new Date(d.getFullYear(),d.getMonth()+sign,Math.min(d.getDate(),new Date(d.getFullYear(),d.getMonth()+sign+1,0).getDate())));}openSchedule(false);}
-  if(action==="schedule-today"){ui.selected=localDate(new Date());ui.fourWeekStart=ui.selected;openSchedule(false);}
+  if(action==="schedule-today"){const date=new Date();ui.selected=localDate(date);ui.fourWeekStart=localDate(shiftDate(date,-date.getDay()));openSchedule(false);}
   if(action==="schedule-add"){eventForm();}
   if(action==="schedule-edit"){const e=events().find(x=>x.id===b.dataset.id);if(e)eventForm(e);}
   if(action==="schedule-delete"){if(confirm("Delete this event"+(events().find(x=>x.id===b.dataset.id)?.repeat==="weekly"?" and all its repeats":"")+"?")){updateEvents(events().filter(e=>e.id!==b.dataset.id));closeSheet();toast("Event deleted");}}
@@ -564,7 +567,7 @@ window.CommandSchedule={create,validate:(e)=>({
  allDay:!!e.allDay,location:String(e.location||"").slice(0,200),notes:String(e.notes||"").slice(0,2000),
  breakMinutes:timekeeping.validOverride(e.breakMinutes),
  park:["IOA","USF","CityWalk","Other"].includes(e.park)?e.park:(e.domain==="work"?"IOA":""),
- assignment:["lead","zones","rtc","detail","other"].includes(e.assignment)?e.assignment:"",
+ assignment:["lead","support","zones","rtc","detail","other"].includes(e.assignment)?e.assignment:"",
  zoneColor:["red","orange","yellow","green","blue","purple"].includes(e.zoneColor)?e.zoneColor:"",
  repeat:e.repeat==="weekly"?"weekly":"none",weekdays:Array.isArray(e.weekdays)?e.weekdays.map(Number).filter(n=>n>=0&&n<=6):[],until:parseIso(e.until)
 }),parseImportedText};

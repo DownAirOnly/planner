@@ -73,20 +73,21 @@ function parkFrom(text){
  return "IOA"; // Current work location default. Changeable during review.
 }
 function locationFrom(text,domain){
- if(domain!=="work")return "";
- const s=clean(text).replace(/\s*\/\s*/g,"/");
- if(/\bIOA\s*\/\s*Lost\b|\bLost\s+Continent\b/i.test(s))return "Lost Continent";
- if(/\bHogsmeade\b/i.test(s))return "Hogsmeade";
- if(/\bMarvel\b/i.test(s))return "Marvel";
- if(/\bPort of Entry\b/i.test(s))return "Port of Entry";
- if(/\bUSF\s*\/\s*London\b/i.test(s))return "London";
- if(/\bUSF\s*\/\s*San Francisco\b/i.test(s))return "San Francisco";
- return "";
-}
-function activityFrom(text){
+  if(domain!=="work")return "";
+  const s=clean(text).replace(/\s*\/\s*/g,"/");
+  if(/\b(?:WW\s*o\s*HP|Wizarding\s+World(?:\s+of\s+Harry\s+Potter)?|Hogsmeade(?:\s+Village)?)\b/i.test(s))return "Hogsmeade Village";
+  if(/\bIOA\s*\/\s*Lost\b|\bLost\s+Continent\b/i.test(s))return "Lost Continent";
+  if(/\bMarvel\b/i.test(s))return "Marvel";
+  if(/\bPort of Entry\b/i.test(s))return "Port of Entry";
+  if(/\bUSF\s*\/\s*London\b/i.test(s))return "London";
+  if(/\bUSF\s*\/\s*San Francisco\b/i.test(s))return "San Francisco";
+  return "";
+ }
+ function activityFrom(text){
  const s=clean(text),match=s.match(/\b(Red|Orange|Yellow|Green|Blue|Purple)\s*Zone\b/i);
  if(match)return {assignment:"zones",zoneColor:match[1].toLowerCase(),assignmentEstimated:false};
- if(/\bRTC\b/i.test(s))return {assignment:"rtc",zoneColor:"",assignmentEstimated:false};
+ if(/\bArea[\s/-]*Support\b/i.test(s))return {assignment:"support",zoneColor:"",assignmentEstimated:false};
+  if(/\bRTC\b/i.test(s))return {assignment:"rtc",zoneColor:"",assignmentEstimated:false};
  if(/\bDetail\b/i.test(s))return {assignment:"detail",zoneColor:"",assignmentEstimated:false};
  if(/\bZones?\b/i.test(s))return {assignment:"zones",zoneColor:"",assignmentEstimated:false};
  if(/\bLead(?:\s+Attn?d)?\b/i.test(s))return {assignment:"lead",zoneColor:"",assignmentEstimated:true};
@@ -106,14 +107,10 @@ function unique(rows){const seen=new Set();return rows.filter(e=>{
  if(seen.has(key))return false;seen.add(key);return true;
 }).sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));}
 function fillSharedWorkLocation(rows,domain){
- if(domain!=="work")return rows;
- const known=[...new Set(rows.map(e=>e.location).filter(Boolean))];
- if(known.length!==1)return rows;
- const park=[...new Set(rows.filter(e=>e.location).map(e=>e.park).filter(Boolean))];
- if(park.length>1)return rows;
- return rows.map(e=>e.location?e:{...e,location:known[0],park:park[0]||"IOA",locationEstimated:true});
-}
-function countRanges(text){return String(text||"").split(/\r?\n/).reduce((n,line)=>n+(timeRange(line)?1:0),0);}
+  // Never copy a neighboring shift's location: unknown is safer than incorrect.
+  return rows;
+ }
+ function countRanges(text){return String(text||"").split(/\r?\n/).reduce((n,line)=>n+(timeRange(line)?1:0),0);}
 function parseText(raw,domain,year,month){
  const lines=String(raw||"").split(/\r?\n/).map(clean).filter(Boolean).slice(0,500);
  const ctx=context(raw,year,month),candidates=[];
