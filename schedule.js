@@ -204,7 +204,9 @@ function nextEvent(domain){
    if(ui.mode==="day")return[selected];
    if(ui.mode==="fourweeks")return Array.from({length:28},(_,i)=>shiftDate(fromDate(ui.fourWeekStart),i));
    if(ui.mode==="week"){
-     // Calendar weeks always start Sunday regardless of Work/Pay Week accounting.
+     // Pay Week is Sunday-Saturday; Work Week is Friday-Thursday.
+     // The active period determines the visible week and shift list, not just totals.
+     if(ui.domain==="work")return period().days.map(fromDate);
      const start=shiftDate(selected,-selected.getDay());
      return Array.from({length:7},(_,i)=>shiftDate(start,i));
    }
@@ -218,7 +220,7 @@ function nextEvent(domain){
   const days=daysForView();
   let grid="";
   if(ui.mode!=="day"){
-    grid='<div class="schedule-cal-head">'+["S","M","T","W","T","F","S"].map(v=>'<span>'+v+'</span>').join("")+'</div><div class="schedule-cal-grid '+ui.mode+'">'+days.map(d=>{
+    grid='<div class="schedule-cal-head">'+(ui.mode==="week"&&ui.domain==="work"?days.map(d=>DAYS[d.getDay()].charAt(0)):["S","M","T","W","T","F","S"]).map(v=>'<span>'+v+'</span>').join("")+'</div><div class="schedule-cal-grid '+ui.mode+'">'+days.map(d=>{
        const iso=localDate(d),matches=selectedEvents(iso),active=iso===ui.selected,other=d.getMonth()!==fromDate(ui.selected).getMonth();
        let dots="";
        if(matches.length)dots='<span class="schedule-dots">'+[...new Set(matches.map(e=>e.domain))].slice(0,3).map(domain=>'<i class="'+domain+'"></i>').join("")+'</span>';
@@ -452,7 +454,7 @@ function eventForm(item={}){
   if(!action.startsWith("schedule-"))return false;
   if(action==="schedule-domain"){ui.domain=b.dataset.domain;if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="fourweeks"))ui.mode="week";rememberUi();openSchedule(false);}
   if(action==="schedule-mode"){ui.mode=b.dataset.mode;if(ui.mode==="fourweeks"){const date=fromDate(ui.selected);ui.fourWeekStart=localDate(shiftDate(date,-date.getDay()));}rememberUi();openSchedule(false);}
-  if(action==="schedule-period"){ui.periodMode=b.dataset.period==="pay"?"pay":"work";rememberUi();openSchedule(false);}
+  if(action==="schedule-period"){ui.periodMode=b.dataset.period==="pay"?"pay":"work";ui.mode="week";rememberUi();openSchedule(false);}
   if(action==="schedule-select"){ui.selected=b.dataset.date;openSchedule(false);}
   if(action==="schedule-prev"||action==="schedule-next"){const sign=action==="schedule-prev"?-1:1;const d=fromDate(ui.selected);if(ui.mode==="fourweeks"){ui.fourWeekStart=localDate(shiftDate(fromDate(ui.fourWeekStart),28*sign));ui.selected=ui.fourWeekStart;}else{ui.selected=localDate(ui.mode==="day"?shiftDate(d,sign):ui.mode==="week"?shiftDate(d,7*sign):new Date(d.getFullYear(),d.getMonth()+sign,Math.min(d.getDate(),new Date(d.getFullYear(),d.getMonth()+sign+1,0).getDate())));}openSchedule(false);}
   if(action==="schedule-today"){const date=new Date();ui.selected=localDate(date);ui.fourWeekStart=localDate(shiftDate(date,-date.getDay()));openSchedule(false);}

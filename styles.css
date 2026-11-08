@@ -39,20 +39,15 @@
  .tabbar::after{content:none}
 }
 
-/* v13: iPhone standalone layout.
-   A fixed bottom bar has drifted during WKWebView cold-start viewport changes.
-   Keep the navigation in the shell's flex layout instead of compositing it
-   independently. Only #screen scrolls. Browser mode keeps the existing layout. */
-:root{--safe-top-debug:env(safe-area-inset-top,0px);--safe-bottom-debug:env(safe-area-inset-bottom,0px)}
-html,body{background-color:var(--bg)}
+/* v14 standalone iOS fix: without viewport-fit=cover, the iOS status bar
+   owns its own area and 100vh is the usable viewport through the bottom edge.
+   Keep this nav in-flow; never float it with a viewport transform. */
+html,body{background:var(--bg)}
 @media(max-width:620px){
-  html.command-standalone,html.command-standalone body{height:100%;overflow:hidden}
+  html.command-standalone,html.command-standalone body{height:100vh;overflow:hidden}
   html.command-standalone .app-shell{
-    display:flex;flex-direction:column;
-    height:100dvh;min-height:0;
-    padding-top:env(safe-area-inset-top,0px);
-    padding-bottom:0;
-    overflow:hidden;
+    display:flex;flex-direction:column;height:100vh;min-height:0;
+    padding-top:0;padding-bottom:0;overflow:hidden;
   }
   html.command-standalone .topbar{flex:0 0 auto}
   html.command-standalone #screen{
@@ -61,12 +56,11 @@ html,body{background-color:var(--bg)}
   }
   html.command-standalone .tabbar{
     position:relative;inset:auto;left:auto;right:auto;bottom:auto;
-    display:grid;flex:0 0 auto;
-    transform:none;align-self:stretch;
-    width:calc(100% + 32px);max-width:none;
-    margin:0 -16px;
+    display:grid;flex:0 0 auto;transform:none;align-self:stretch;
+    width:calc(100% + 32px);max-width:none;margin:0 -16px;
     border-radius:18px 18px 0 0;
-    padding:9px 6px calc(8px + env(safe-area-inset-bottom,0px));
-    background:#172022;
+    padding:9px 6px max(32px,env(safe-area-inset-bottom,0px));
+    background:#172022;border-bottom:0;
   }
+  html.command-standalone .tabbar::after{content:none}
 }
