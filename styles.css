@@ -5,6 +5,6 @@
 
 /* v9: Portfolio-derived c. mark; retained separate from task/calendar semantic colors. */
 :root{--brand-bg:#09090b;--brand-ink:#f7f9fe;--brand-dot:#ff4b61}
-.brand-mark{background:var(--brand-bg);color:var(--brand-ink);font-family:'DM Sans',system-ui,-apple-system,sans-serif;font-weight:800;font-size:30px;letter-spacing:-.105em;padding-right:4px;border-radius:10px}
+ .brand-mark{display:inline-flex;align-items:center;justify-content:center;background:var(--brand-bg);color:var(--brand-ink);font-family:'DM Sans',system-ui,-apple-system,sans-serif;font-weight:800;font-size:30px;letter-spacing:-.105em;padding-right:4px;border-radius:10px}
 .brand-mark span,.brand-name span{color:var(--brand-dot)}
 .brand-name{font-family:'DM Sans',system-ui,-apple-system,sans-serif;font-weight:800}
