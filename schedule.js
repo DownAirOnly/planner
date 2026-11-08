@@ -81,7 +81,7 @@ function parseTimeRange(text){
 }
 function parseImportedText(raw,domain,year,month){return window.CommandImportParser.parseText(raw,domain,year,month);}
 function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSheet,closeSheet,toast,openSchedule}){
- const ui={domain:"work",mode:"week",periodMode:"work",selected:localDate(new Date()),workingImport:null};
+ const ui={domain:"work",mode:"week",periodMode:"work",selected:localDate(new Date()),fourWeekStart:localDate(new Date()),workingImport:null};
  const events=()=>getEvents()||[];
  const usualWorkdays=()=>getSchedulePrefs?.()?.usualWorkdays||[5,6,0,1,2];
  const workWeekOrder=[5,6,0,1,2,3,4];
@@ -133,32 +133,43 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
     '<div class="schedule-period-switch" role="group" aria-label="Hours grouping">'+
       '<button type="button" class="'+(ui.periodMode==="work"?"active":"")+'" data-action="schedule-period" data-period="work">Work Week</button>'+
       '<button type="button" class="'+(ui.periodMode==="pay"?"active":"")+'" data-action="schedule-period" data-period="pay">Pay Week</button></div>'+
-    '<div class="schedule-period-caption"><strong>'+esc(periodHeader(p))+'</strong><span>'+(p.mode==="work"?"Friday–Thursday":"Sunday–Saturday")+' · '+totals.shifts+' shift'+(totals.shifts===1?"":"s")+'</span></div>'+
+    '<div class="schedule-period-caption"><strong>'+esc(periodHeader(p))+'</strong></div>'+
     timeSummary(totals)+
-    '<p class="schedule-time-disclaimer">Adjusted hours subtract planned breaks, not actual clock punches.</p>'+
+    
    '</section>';
  }
- function workPeriodAgenda(){
-  const p=period(),all=periodEvents();
-  return '<section class="section schedule-agenda"><div class="section-head"><h2>Shifts</h2><span class="muted">'+all.length+' in this period</span></div>'+
-   (all.length?'<div class="schedule-period-agenda">'+p.days.map(day=>{
-    const items=dateEvents(day,"work");
-    return '<div class="schedule-period-day '+(day===ui.selected?"selected":"")+'"><div class="schedule-period-day-label"><strong>'+esc(labelDate(day))+'</strong><span>'+ (items.length?timekeeping.minutesLabel(timekeeping.aggregate(items).adjusted)+' adjusted':"Day off")+'</span></div>'+
-      (items.length?items.map(e=>{
-       const t=timekeeping.shiftTotals(e);
-       return '<button type="button" class="schedule-period-shift'+zoneStyle(e)+'" data-action="schedule-edit" data-id="'+esc(e.id)+'"><span class="schedule-period-shift-bar"></span><span class="schedule-period-shift-main"><strong>'+esc(fmtTime(e))+'</strong>'+
-        '<small>'+esc(workMeta(e)||"Work shift")+'</small><small>'+esc(duration(e))+' scheduled · '+esc(breakDisplay(e))+' break</small></span><span class="schedule-period-shift-hours"><strong>'+esc(adjusted(e))+'</strong><small>Adjusted</small></span>'+ic("chevron-right","tiny")+'</button>';
-      }).join(""):'')+'</div>';
-   }).join("")+'</div>':
-   '<div class="empty"><strong>No work shifts scheduled</strong><p>Import a screenshot or add a shift.</p></div>')+'</section>';
+ function workShiftList(){
+ const days=daysForView().map(localDate),count=days.reduce((n,d)=>n+dateEvents(d,"work").length,0);
+ const rows=days.map(date=>{
+  const items=dateEvents(date,"work");
+  if(!items.length)return ui.mode==="week"?'<div class="schedule-compact-off"><span>'+esc(labelDate(date))+'</span><small>No shift saved</small></div>':"";
+  return items.map(e=>'<button class="schedule-compact-shift'+zoneStyle(e)+'" data-action="schedule-edit" data-id="'+esc(e.id)+'"><span class="schedule-compact-day">'+esc(labelDate(date))+'</span><span class="schedule-compact-main"><strong>'+esc(fmtTime(e))+'</strong><small>'+esc(workMeta(e)||"Work shift")+'</small></span><strong class="schedule-compact-hours">'+esc(adjusted(e))+'</strong></button>').join("");
+ }).join("");
+ return '<section class="section schedule-agenda schedule-work-list"><div class="section-head"><h2>Shifts</h2><span class="muted">'+count+' scheduled</span></div>'+
+  (count?'<div class="schedule-compact-list">'+rows+'</div>':'<div class="empty"><strong>No shifts saved here</strong><p>Import or add your work schedule.</p></div>')+'</section>';
+}
+function homeWorkShifts(){
+ const now=new Date(),minute=now.getHours()*60+now.getMinutes(),list=[];
+ for(let offset=0;offset<366&&list.length<3;offset++){
+  const date=localDate(shiftDate(now,offset));
+  for(const e of dateEvents(date,"work")){
+   if(offset===0&&e.startTime&&!e.allDay){
+    const [h,m]=e.startTime.split(":").map(Number),start=h*60+m,duration=timekeeping.scheduledMinutes(e);
+    if((duration!==null&&minute>=start+duration)||(duration===null&&minute>start))continue;
+   }
+   list.push({...e,occurrenceDate:date});if(list.length===3)break;
+  }
  }
- function nextEvent(domain){
+ return '<section class="section schedule-next-shifts"><div class="section-head"><h2>Next shifts</h2><button class="subtle-link" data-action="schedule-jump" data-domain="work">Schedule</button></div>'+
+ (list.length?'<div class="schedule-next-list">'+list.map(e=>'<button class="schedule-next-row'+zoneStyle(e)+'" data-action="schedule-jump" data-domain="work" data-date="'+esc(e.occurrenceDate)+'"><span class="schedule-next-date">'+esc(labelDate(e.occurrenceDate))+'</span><strong class="schedule-next-time">'+esc(fmtTime(e))+'</strong><small class="schedule-next-meta">'+esc(workMeta(e)||"Work")+'</small>'+ic("chevron-right","tiny")+'</button>').join("")+'</div>':'<div class="schedule-next-empty">No upcoming work shifts saved.</div>')+'</section>';
+}
+function nextEvent(domain){
    const now=new Date(),day0=localDate(now);
    for(let i=0;i<365;i++){const day=localDate(shiftDate(now,i));const possible=dateEvents(day,domain).filter(e=>i!==0||e.allDay||!e.endTime||(day+"T"+e.endTime)>=day0+"T"+pad(now.getHours())+":"+pad(now.getMinutes()));if(possible.length)return{...possible[0],occurrenceDate:day};}
    return null;
  }
  function homeSummary(){
-   const domains=["work","school","personal"];
+   const domains=["school","personal"];
    return '<section class="section"><div class="section-head"><h2>Coming up</h2><button class="subtle-link" data-action="schedule-jump" data-domain="work">Calendar '+ic("arrow","tiny")+'</button></div><div class="schedule-home-grid">'+domains.map(domain=>{
     const next=nextEvent(domain),heading=domain==="work"?"Next shift":domain==="school"?"Next class":"Next plan";
     return '<button class="schedule-home-item" data-action="schedule-jump" data-domain="'+domain+'"><span class="schedule-tag '+domain+'">'+(domain==="work"?"Work":domain==="school"?"School":"Personal")+'</span><span class="schedule-home-heading">'+heading+'</span><span class="schedule-home-primary">'+(next?esc(labelDate(next.occurrenceDate)):"Nothing scheduled")+'</span><span class="schedule-home-secondary">'+(next?esc(fmtTime(next)+(workMeta(next)?" · "+workMeta(next):"")):(domain==="work"?"Add your work schedule":domain==="school"?"Add your class schedule":"Add a personal plan"))+'</span></button>';
@@ -166,11 +177,13 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
  }
  const heading=()=>{
    const date=fromDate(ui.selected),format=ui.mode==="month"?{month:"long",year:"numeric"}:ui.mode==="week"?{month:"short",year:"numeric"}:{weekday:"long",month:"long",day:"numeric"};
-   return ui.domain==="work"&&ui.mode==="week"?periodHeader(period()):date.toLocaleDateString(undefined,format);
+   if(ui.mode==="fourweeks")return labelDate(ui.fourWeekStart)+" – "+labelDate(localDate(shiftDate(fromDate(ui.fourWeekStart),27)));
+    return ui.domain==="work"&&ui.mode==="week"?periodHeader(period()):date.toLocaleDateString(undefined,format);
  };
  function daysForView(){
    const selected=fromDate(ui.selected);
    if(ui.mode==="day")return[selected];
+    if(ui.mode==="fourweeks")return Array.from({length:28},(_,i)=>shiftDate(fromDate(ui.fourWeekStart),i));
    if(ui.mode==="week"){
      if(ui.domain==="work")return period().days.map(fromDate);
      const start=shiftDate(selected,-((selected.getDay()+6)%7));
@@ -186,7 +199,7 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
   const days=daysForView();
   let grid="";
   if(ui.mode!=="day"){
-    grid='<div class="schedule-cal-head">'+(ui.domain==="work"&&ui.mode==="week"?days.map(d=>DAYS[d.getDay()].charAt(0)):["M","T","W","T","F","S","S"]).map(v=>'<span>'+v+'</span>').join("")+'</div><div class="schedule-cal-grid '+ui.mode+'">'+days.map(d=>{
+    grid='<div class="schedule-cal-head">'+((ui.domain==="work"&&ui.mode==="week")||ui.mode==="fourweeks"?days.slice(0,7).map(d=>DAYS[d.getDay()].charAt(0)):["M","T","W","T","F","S","S"]).map(v=>'<span>'+v+'</span>').join("")+'</div><div class="schedule-cal-grid '+ui.mode+'">'+days.map(d=>{
        const iso=localDate(d),matches=selectedEvents(iso),active=iso===ui.selected,other=d.getMonth()!==fromDate(ui.selected).getMonth();
        let dots="";
        if(matches.length)dots='<span class="schedule-dots">'+[...new Set(matches.map(e=>e.domain))].slice(0,3).map(domain=>'<i class="'+domain+'"></i>').join("")+'</span>';
@@ -202,14 +215,14 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
    '<div class="empty"><strong>No '+(ui.domain==="all"?"events":DOMAINS[ui.domain].label.toLowerCase()+" events")+' scheduled</strong><p>Add an event or import a schedule.</p></div>')+'</section>';
  }
  function render(){
-  return '<div class="page-heading"><div><p class="eyebrow">Calendar</p><h1 class="page-title">Schedule</h1></div><div class="action-row"><button class="button secondary" data-action="schedule-import">'+ic("upload")+' Import</button><button class="button" data-action="schedule-add">'+ic("plus")+' Add</button></div></div>'+
-   '<div class="schedule-domain-picker" role="group" aria-label="Calendar category">'+["work","school","personal","all"].map(d=>'<button data-action="schedule-domain" data-domain="'+d+'" class="'+(ui.domain===d?"active":"")+'">'+(d==="all"?"All":DOMAINS[d].label)+'</button>').join("")+'</div>'+
-   '<div class="schedule-view-bar"><span class="small-label">'+(ui.domain==="all"?"All calendars":DOMAINS[ui.domain].label+" calendar")+'</span><div class="schedule-view-picker">'+["day","week","month"].map(mode=>'<button data-action="schedule-mode" data-mode="'+mode+'" class="'+(ui.mode===mode?"active":"")+'">'+mode[0].toUpperCase()+mode.slice(1)+'</button>').join("")+'</div></div>'+
-   (ui.domain==="work"?'<div class="schedule-workweek-note"><span>Usual workdays: <strong>'+esc(workweekText())+'</strong></span><button type="button" data-action="schedule-workweek">Edit</button></div>':"")+
-    (ui.domain==="work"?workPeriodSummary():"")+calendar()+(ui.domain==="work"&&ui.mode==="week"?workPeriodAgenda():eventRows())+
-   (ui.domain==="school"?'<p class="schedule-hint">For classes that meet on the same weekdays, choose “Repeat weekly” when adding an event.</p>':"");
- }
- function eventForm(item={}){
+ const modes=ui.domain==="work"?[["week","Week"],["month","Month"],["fourweeks","4 Weeks"]]:[["day","Day"],["week","Week"],["month","Month"],["fourweeks","4 Weeks"]];
+ return '<div class="schedule-domain-picker" role="group" aria-label="Calendar category">'+["work","school","personal","all"].map(d=>'<button data-action="schedule-domain" data-domain="'+d+'" class="'+(ui.domain===d?"active":"")+'">'+(d==="all"?"All":DOMAINS[d].label)+'</button>').join("")+'</div>'+
+ '<div class="schedule-view-bar"><div class="schedule-view-picker" role="group" aria-label="Calendar view">'+modes.map(([mode,label])=>'<button data-action="schedule-mode" data-mode="'+mode+'" class="'+(ui.mode===mode?"active":"")+'">'+label+'</button>').join("")+'</div><div class="schedule-view-actions"><button class="button secondary" data-action="schedule-import">'+ic("upload")+' Import</button><button class="button" data-action="schedule-add">'+ic("plus")+' Add</button></div></div>'+
+ calendar()+(ui.domain==="work"?workShiftList():eventRows())+
+ (ui.domain==="work"?workPeriodSummary()+'<div class="schedule-workweek-note"><span>Usual workdays: <strong>'+esc(workweekText())+'</strong></span><button type="button" data-action="schedule-workweek">Edit</button></div>':"")+
+ (ui.domain==="school"?'<p class="schedule-hint">Use Repeat weekly for recurring classes.</p>':"");
+}
+function eventForm(item={}){
   const domain=item.domain|| (ui.domain==="all"?"personal":ui.domain);
   const date=item.date||ui.selected;
   const val=(x)=>esc(item[x]??"");
@@ -416,14 +429,14 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
  }
  function handleAction(b){
   const action=b.dataset.action;
-  if(action==="schedule-jump"){ui.domain=b.dataset.domain||"work";openSchedule();return true;}
+  if(action==="schedule-jump"){ui.domain=b.dataset.domain||"work";if(ui.domain==="work"&&ui.mode==="day")ui.mode="week";if(b.dataset.date){ui.selected=b.dataset.date;ui.mode="week";ui.periodMode="work";}openSchedule();return true;}
   if(!action.startsWith("schedule-"))return false;
-  if(action==="schedule-domain"){ui.domain=b.dataset.domain;openSchedule(false);}
+  if(action==="schedule-domain"){ui.domain=b.dataset.domain;if(ui.domain==="work"&&ui.mode==="day")ui.mode="week";openSchedule(false);}
   if(action==="schedule-mode"){ui.mode=b.dataset.mode;openSchedule(false);}
   if(action==="schedule-period"){ui.periodMode=b.dataset.period==="pay"?"pay":"work";openSchedule(false);}
   if(action==="schedule-select"){ui.selected=b.dataset.date;openSchedule(false);}
-  if(action==="schedule-prev"||action==="schedule-next"){const sign=action==="schedule-prev"?-1:1;const d=fromDate(ui.selected);ui.selected=localDate(ui.mode==="day"?shiftDate(d,sign):ui.mode==="week"?shiftDate(d,7*sign):new Date(d.getFullYear(),d.getMonth()+sign,Math.min(d.getDate(),new Date(d.getFullYear(),d.getMonth()+sign+1,0).getDate())));openSchedule(false);}
-  if(action==="schedule-today"){ui.selected=localDate(new Date());openSchedule(false);}
+  if(action==="schedule-prev"||action==="schedule-next"){const sign=action==="schedule-prev"?-1:1;const d=fromDate(ui.selected);if(ui.mode==="fourweeks"){ui.fourWeekStart=localDate(shiftDate(fromDate(ui.fourWeekStart),28*sign));ui.selected=ui.fourWeekStart;}else{ui.selected=localDate(ui.mode==="day"?shiftDate(d,sign):ui.mode==="week"?shiftDate(d,7*sign):new Date(d.getFullYear(),d.getMonth()+sign,Math.min(d.getDate(),new Date(d.getFullYear(),d.getMonth()+sign+1,0).getDate())));}openSchedule(false);}
+  if(action==="schedule-today"){ui.selected=localDate(new Date());ui.fourWeekStart=ui.selected;openSchedule(false);}
   if(action==="schedule-add"){eventForm();}
   if(action==="schedule-edit"){const e=events().find(x=>x.id===b.dataset.id);if(e)eventForm(e);}
   if(action==="schedule-delete"){if(confirm("Delete this event"+(events().find(x=>x.id===b.dataset.id)?.repeat==="weekly"?" and all its repeats":"")+"?")){updateEvents(events().filter(e=>e.id!==b.dataset.id));closeSheet();toast("Event deleted");}}
@@ -543,7 +556,7 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
   return false;
  }
  function setDomain(domain){if(["work","school","personal","all"].includes(domain))ui.domain=domain;}
- return{render,homeSummary,handleAction,handleInput,handleSubmit,setDomain};
+ return{render,homeSummary,homeWorkShifts,handleAction,handleInput,handleSubmit,setDomain};
 }
 window.CommandSchedule={create,validate:(e)=>({
  id:String(e.id||uid()).slice(0,150),domain:Object.hasOwn(DOMAINS,e.domain)?e.domain:"personal",

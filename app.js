@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 9;
+  const APP_VERSION = 10;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -106,7 +106,7 @@
     const pinned=data.focus.map(id=>data.tasks.find(t=>t.id===id)).filter(t=>t&&t.status!=='done');
     const suggested=data.tasks.filter(t=>!t.needsReview&&['open','in_progress'].includes(t.status)&&!data.focus.includes(t.id)&&!data.dismissed.includes(t.id)&&(!t.projectId||data.projects.some(p=>p.id===t.projectId&&!p.needsReview&&p.status==='active'&&!p.blocker))).sort(taskSort).slice(0,3);
     const moving=data.projects.filter(p=>!p.needsReview&&['active','waiting','blocked'].includes(p.status)).slice(0,3);
-    return '<div class="page-heading"><h1 class="page-title">Home</h1><button class="button" data-action="quick-add">'+icon('plus')+' Capture</button></div>'+
+    return '<div class="page-heading page-heading-actions-only"><button class="button" data-action="quick-add">'+icon('plus')+' Capture</button></div>'+schedule.homeWorkShifts()+
       '<section class="section"><div class="section-head"><h2>Up next</h2><button class="subtle-link" data-action="tab" data-view="tasks">Choose items</button></div>'+ (pinned.length?pinned.map((t,i)=>'<div class="focus-item">'+taskRow(t)+focusControls(t,i)+'</div>').join(''):empty('Your priorities, in your order','Pin an item from an area or accept a suggestion.'))+'</section>'+
       (suggested.length?'<section class="section"><div class="section-head"><h2>Suggestions</h2><span class="muted">Due dates, then priority</span></div>'+suggested.map(t=>'<div class="focus-item">'+taskRow(t)+'<div class="focus-controls"><button class="button secondary" data-action="pin" data-id="'+escapeHtml(t.id)+'">Add to Up next</button><button class="button quiet" data-action="dismiss" data-id="'+escapeHtml(t.id)+'">Dismiss</button></div></div>').join('')+'</section>':'')+
       (moving.length?'<section class="section"><div class="section-head"><h2>Moving forward</h2></div><div class="project-summary-list">'+moving.map(p=>'<button class="project-summary-row" data-action="project-detail" data-id="'+escapeHtml(p.id)+'"><span class="project-summary-name">'+escapeHtml(p.title)+'</span><span class="project-summary-next">'+(p.blocker?'<span class="chip blocked">Blocker</span>':escapeHtml(p.next||'Choose a next step'))+'</span>'+icon('chevron-right','tiny')+'</button>').join('')+'</div></section>':'')+
@@ -114,7 +114,7 @@
   }
   function areas(){
     if(state.areaId)return areaDetail();
-    return '<div class="page-heading"><h1 class="page-title">Areas</h1><button class="button secondary" data-action="tab" data-view="tasks">All items</button></div><div class="project-grid">'+AREAS.map(([id,name])=>{
+    return '<div class="page-heading page-heading-actions-only"><button class="button secondary" data-action="tab" data-view="tasks">All items</button></div><div class="project-grid">'+AREAS.map(([id,name])=>{
       const count=data.projects.filter(p=>p.areaId===id&&p.status!=='done').length;
       const tasks=data.tasks.filter(t=>itemArea(t)===id&&t.status!=='done').length;
       return '<button class="project-card area-card" data-action="area-detail" data-id="'+id+'"><h3>'+escapeHtml(name)+'</h3><p>'+count+' projects · '+tasks+' items</p></button>';
@@ -134,7 +134,7 @@
     const loose=data.tasks.filter(t=>!t.projectId&&!t.areaId&&t.status!=='done');
     const review=data.tasks.filter(t=>t.needsReview&&t.status!=='done'&&!loose.includes(t));
     const ps=data.projects.filter(p=>p.needsReview||!p.areaId);
-    return '<div class="page-heading"><h1 class="page-title">Inbox</h1><button class="button" data-action="quick-add">'+icon('plus')+' Capture</button></div><p class="page-description">Capture now. Choose an area when you’re ready.</p><section class="section">'+(loose.length?loose.map(taskRow).join(''):empty('Nothing to organize','New captures appear here.'))+'</section>'+
+    return '<div class="page-heading page-heading-actions-only"><button class="button" data-action="quick-add">'+icon('plus')+' Capture</button></div><section class="section">'+(loose.length?loose.map(taskRow).join(''):empty('Nothing to organize','New captures appear here.'))+'</section>'+
     ((review.length||ps.length)?'<section class="section"><h2>Review existing entries</h2><p class="page-description">Older entries are preserved. Open each one and confirm its status before it becomes a suggestion.</p><div class="project-grid">'+ps.map(projectCard).join('')+'</div>'+review.map(taskRow).join('')+'</section>':'')+
     '<section class="section"><div class="section-head"><h2>Ideas</h2><button class="subtle-link" data-action="open-ideas">All ideas</button></div>'+data.ideas.filter(i=>!i.areaId).map(i=>'<button class="project-summary-row" data-action="edit" data-kind="idea" data-id="'+escapeHtml(i.id)+'">'+escapeHtml(i.title)+'</button>').join('')+'</section>'+
     '<button class="button quiet" data-action="restore-suggestions">Restore dismissed suggestions</button>';

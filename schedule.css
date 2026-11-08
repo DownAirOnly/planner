@@ -219,3 +219,56 @@
  .schedule-period-shift-hours strong{font-size:12px}
  .schedule-period-shift>.icon{display:none}
 }
+
+/* v10 calendar-first layout */
+.schedule-domain-picker{margin:0 0 9px}
+.schedule-view-bar{margin:0 0 7px;gap:6px}
+.schedule-view-picker{flex:1;min-width:0;justify-content:space-around;gap:1px;padding:3px}
+.schedule-view-picker button{flex:1;white-space:nowrap;padding:9px 6px;font-size:12px}
+.schedule-view-actions{display:flex;gap:5px;flex:none}
+.schedule-view-actions .button{padding:9px;font-size:12px;min-height:38px;border-radius:10px}
+.schedule-view-actions .icon{width:14px;height:14px}
+.schedule-calendar{padding:12px 10px}
+.schedule-calendar-top{margin-bottom:8px}
+.schedule-date,.schedule-cal-grid.month .schedule-date,.schedule-cal-grid.fourweeks .schedule-date{height:45px;gap:4px;padding-top:7px}
+.schedule-work-list{margin-top:11px}
+.schedule-work-list .section-head{margin-bottom:7px}
+.schedule-compact-list,.schedule-next-list{border:1px solid var(--line);border-radius:13px;overflow:hidden;background:var(--panel)}
+.schedule-compact-shift,.schedule-next-row{display:flex;align-items:center;gap:9px;min-width:0;width:100%;background:transparent;border:0;color:var(--text);text-align:left;padding:10px 12px}
+.schedule-compact-shift+.schedule-compact-shift,.schedule-compact-shift+.schedule-compact-off,.schedule-compact-off+.schedule-compact-shift,.schedule-compact-off+.schedule-compact-off,.schedule-next-row+.schedule-next-row{border-top:1px solid var(--line)}
+.schedule-compact-day{flex:0 0 88px;font-size:12px;font-weight:740;white-space:nowrap}
+.schedule-compact-main{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+.schedule-compact-main strong,.schedule-next-time{font-size:13px;font-weight:730;font-variant-numeric:tabular-nums}
+.schedule-compact-main small,.schedule-next-meta{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.schedule-compact-hours{font-size:12px;font-weight:750;color:var(--mint);flex:none;font-variant-numeric:tabular-nums}
+.schedule-compact-off{display:flex;justify-content:space-between;align-items:center;min-height:29px;padding:6px 12px;color:var(--muted);font-size:11px}
+.schedule-compact-off small{font-size:11px}
+.schedule-period-block{margin:12px 0 10px;padding:10px}
+.schedule-period-switch{margin-bottom:7px}
+.schedule-period-switch button{padding:7px 8px}
+.schedule-period-caption{margin-bottom:8px}
+.schedule-period-caption strong{font-size:12px}
+.schedule-time-summary>div{padding:8px 9px;gap:3px}
+.schedule-time-summary strong{font-size:17px}
+.schedule-workweek-note{margin:10px 0 0;padding:7px 11px}
+.schedule-next-shifts{margin-top:3px}
+.schedule-next-shifts .section-head{margin-bottom:8px}
+.schedule-next-row{gap:9px;min-height:46px}
+.schedule-next-date{flex:0 0 79px;font-size:12px;font-weight:750}
+.schedule-next-time{flex:0 0 auto}
+.schedule-next-meta{flex:1;min-width:0}
+.schedule-next-row .icon{width:12px;height:12px;color:var(--muted);flex:none}
+.schedule-next-empty{font-size:12px;color:var(--muted);padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+@media(max-width:500px){
+ .schedule-calendar{padding:9px 7px}
+ .schedule-cal-grid.month .schedule-date,.schedule-cal-grid.fourweeks .schedule-date{height:42px}
+ .schedule-compact-shift{padding:9px 8px;gap:6px}
+ .schedule-compact-day{flex-basis:75px;font-size:11px}
+ .schedule-compact-main strong{font-size:12px}
+ .schedule-compact-hours{font-size:11px}
+ .schedule-next-meta{display:none}
+ .schedule-next-time{flex:1}
+ .schedule-view-picker button{font-size:11px;padding:9px 5px}
+ .schedule-view-actions .button{padding:9px 7px;font-size:11px}
+}
+@media(max-width:365px){.schedule-view-actions .button{font-size:0;min-width:36px;display:grid;place-items:center;gap:0}.schedule-view-actions .icon{width:17px;height:17px}}
