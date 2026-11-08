@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 12;
+  const APP_VERSION = 13;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -61,7 +61,7 @@
   let data, loadFailed=false;
   try { const stored=localStorage.getItem(KEY); data=stored?normalize(JSON.parse(stored)):normalize({...defaults(),schemaVersion:4}); } catch(err){loadFailed=true;console.warn("Stored data could not be loaded.",err);data=normalize({...defaults(),schemaVersion:4});}
   const state={view:"home",projectId:null,areaId:null,taskFilter:"open",query:""};
-  const schedule=window.CommandSchedule.create({getEvents:()=>data.events,updateEvents:(next)=>{data.events=next;save();render();},getSchedulePrefs:()=>data.schedulePrefs,setSchedulePrefs:(value)=>{data.schedulePrefs=value;save();render();},showSheet:(body)=>showSheet(body),closeSheet:()=>closeSheet(),toast:(message)=>toast(message),openSchedule:(scroll=true)=>{state.view="schedule";state.projectId=null;render();if(scroll)window.scrollTo({top:0,behavior:"instant"});}});
+  const schedule=window.CommandSchedule.create({getEvents:()=>data.events,updateEvents:(next)=>{data.events=next;save();render();},getSchedulePrefs:()=>data.schedulePrefs,setSchedulePrefs:(value)=>{data.schedulePrefs=value;save();render();},showSheet:(body)=>showSheet(body),closeSheet:()=>closeSheet(),toast:(message)=>toast(message),openSchedule:(scroll=true)=>{state.view="schedule";state.projectId=null;render();if(scroll){screen.scrollTop=0;window.scrollTo({top:0,behavior:"instant"});}}});
   function save(){
     if(loadFailed){alert("Saving is paused to protect unreadable existing data. Import a valid backup to recover.");return false;}
     try{localStorage.setItem(KEY,JSON.stringify(data));return true;}
@@ -219,10 +219,11 @@
   function closeSheet(){overlay.innerHTML="";document.body.style.overflow="";if(window.__commandUpdatePending){window.__commandUpdatePending=false;window.location.reload();}}
   function settings(){
     showSheet('<div class="sheet-head"><h2 class="sheet-title">Settings & backup</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+icon("x")+'</button></div>'+
-      '<div class="settings-group"><h3>Saved on this device</h3><p>Everything is stored in this browser. There is no account or cloud synchronization yet. Clearing browser website data can erase your changes.</p></div>'+
+      '<div class="settings-group"><h3>Storage</h3><p>Command currently saves locally. Google sign-in and synchronization are planned but are not active yet. Export a backup before clearing app data.</p></div>'+
       '<div class="settings-group"><h3>Back up your data</h3><p>Export a JSON file before switching phones, clearing browser data, or making significant changes.</p><button class="button" data-action="export">'+icon("download")+' Export backup</button><button class="button secondary" data-action="import">'+icon("upload")+' Import backup</button></div>'+
       '<div class="settings-group"><h3>Reset starter data</h3><p>Replace your local data with the original starter projects. Export first if you want to keep your current work.</p><button class="button danger" data-action="reset">'+icon("trash")+' Reset data</button></div>'+
-      '<div class="settings-group"><h3>About</h3><p>Command v'+APP_VERSION+' · Areas, priorities, inbox, and calendar. Local storage only; no account sync. Screenshot recognition happens in your browser.</p></div>');
+      '<details class="settings-group"><summary>Display diagnostics</summary><p>For troubleshooting the iPhone Home Screen layout.</p><button class="button secondary" data-action="display-diagnostics">Copy display details</button></details>'+ 
+      '<div class="settings-group"><h3>About</h3><p>Command v'+APP_VERSION+' · Local storage with backup export; account sync not configured.</p></div>');
   }
   function exportData(){
     const text=JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2);
@@ -230,13 +231,39 @@
     const url=URL.createObjectURL(blob);const a=document.createElement("a");
     a.href=url;a.download="command-backup-"+today()+".json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);toast("Backup file created");
   }
-  function switchTab(view){state.view=view;state.projectId=null;state.areaId=null;render();window.scrollTo({top:0,behavior:"instant"});}
+  function resetPageScroll(){
+    if(screen.scrollTo)screen.scrollTo({top:0,behavior:"instant"});
+    else screen.scrollTop=0;
+    window.scrollTo({top:0,behavior:"instant"});
+  }
+  function switchTab(view){state.view=view;state.projectId=null;state.areaId=null;render();resetPageScroll();}
   document.addEventListener("click",(event)=>{
     const button=event.target.closest("[data-action]");if(!button)return;
     const action=button.dataset.action,id=button.dataset.id,kind=button.dataset.kind;
     if(schedule.handleAction(button))return;
+    if(action==='display-diagnostics'){
+      const bar=document.querySelector(".tabbar"),shell=document.querySelector(".app-shell");
+      const rect=bar?.getBoundingClientRect();
+      const details={
+        version:APP_VERSION,standalone:navigator.standalone===true||matchMedia("(display-mode: standalone)").matches,
+        screenHeight:window.screen.height,innerHeight:window.innerHeight,
+        documentHeight:document.documentElement.clientHeight,
+        visualHeight:window.visualViewport?.height??null,
+        visualTop:window.visualViewport?.offsetTop??null,
+        visualScale:window.visualViewport?.scale??null,
+        shellHeight:shell?getComputedStyle(shell).height:null,
+        navPosition:bar?getComputedStyle(bar).position:null,
+        navTop:rect?Math.round(rect.top):null,navBottom:rect?Math.round(rect.bottom):null,
+        safeTop:getComputedStyle(document.documentElement).getPropertyValue("--safe-top-debug").trim(),
+        safeBottom:getComputedStyle(document.documentElement).getPropertyValue("--safe-bottom-debug").trim()
+      };
+      const report=JSON.stringify(details,null,2);
+      if(navigator.clipboard?.writeText)navigator.clipboard.writeText(report).then(()=>toast("Display details copied")).catch(()=>alert(report));
+      else alert(report);
+      return;
+    }
     if(action==='quick-add'){quickAdd();return;}
-    if(action==='area-detail'){state.areaId=id;state.projectId=null;state.view='areas';render();window.scrollTo({top:0,behavior:'instant'});return;}
+    if(action==='area-detail'){state.areaId=id;state.projectId=null;state.view='areas';render();resetPageScroll();return;}
     if(action==='review-project'){const p=data.projects.find(p=>p.id===id);if(p)p.needsReview=false;save();render();return;}
     if(['pin','unpin','dismiss','move-pin','restore-suggestions'].includes(action)){
       if(action==='pin'){if(!data.focus.includes(id))data.focus.push(id);data.dismissed=data.dismissed.filter(x=>x!==id);}
@@ -252,7 +279,7 @@
     if(action==="settings"){settings();return;}
     if(action==="close-modal"){closeSheet();return;}
     if(action==="edit"){openEditor(kind,id,button.dataset.project||"");return;}
-    if(action==="project-detail"){state.projectId=id;state.view="areas";render();window.scrollTo({top:0,behavior:"instant"});return;}
+    if(action==="project-detail"){state.projectId=id;state.view="areas";render();resetPageScroll();return;}
     if(action==="close-project"){state.projectId=null;state.view="areas";render();return;}
     if(action==="task-filter"){state.taskFilter=button.dataset.filter;render();return;}
     if(action==="toggle-task"){const task=data.tasks.find(t=>t.id===id);if(task){task.status=task.status==="done"?"open":"done";save();render();toast(task.status==="done"?"Task completed":"Task reopened");}return;}

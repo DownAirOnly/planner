@@ -81,7 +81,23 @@ function parseTimeRange(text){
 }
 function parseImportedText(raw,domain,year,month){return window.CommandImportParser.parseText(raw,domain,year,month);}
 function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSheet,closeSheet,toast,openSchedule}){
- const ui={domain:"work",mode:"week",periodMode:"work",selected:localDate(new Date()),fourWeekStart:localDate(shiftDate(new Date(),-new Date().getDay())),workingImport:null};
+ const UI_PREFS_KEY="command.schedule.ui.v1";
+ function readUiPrefs(){
+  try{
+   const raw=JSON.parse(localStorage.getItem(UI_PREFS_KEY)||"{}");
+   if(!raw||typeof raw!=="object"||Array.isArray(raw))return {};
+   return raw;
+  }catch{return {};}
+ }
+ const storedUi=readUiPrefs();
+ const savedDomain=["work","school","personal","all"].includes(storedUi.domain)?storedUi.domain:"work";
+ const savedMode=["week","month","day","fourweeks"].includes(storedUi.mode)?storedUi.mode:"week";
+ const safeMode=savedDomain==="work"&&savedMode==="day"||savedDomain!=="work"&&savedMode==="fourweeks"?"week":savedMode;
+ const ui={domain:savedDomain,mode:safeMode,periodMode:storedUi.periodMode==="work"?"work":"pay",selected:localDate(new Date()),fourWeekStart:localDate(shiftDate(new Date(),-new Date().getDay())),workingImport:null};
+ const rememberUi=()=>{
+  try{localStorage.setItem(UI_PREFS_KEY,JSON.stringify({domain:ui.domain,mode:ui.mode,periodMode:ui.periodMode}));}
+  catch(error){console.warn("Schedule view preference was not saved.",error);}
+ };
  const events=()=>getEvents()||[];
  const usualWorkdays=()=>getSchedulePrefs?.()?.usualWorkdays||[5,6,0,1,2];
  const workWeekOrder=[5,6,0,1,2,3,4];
@@ -131,8 +147,8 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
   const p=period(),items=periodEvents(),totals=timekeeping.aggregate(items);
   return '<section class="schedule-period-block">'+
     '<div class="schedule-period-switch" role="group" aria-label="Hours grouping">'+
-      '<button type="button" class="'+(ui.periodMode==="work"?"active":"")+'" data-action="schedule-period" data-period="work">Work Week</button>'+
-      '<button type="button" class="'+(ui.periodMode==="pay"?"active":"")+'" data-action="schedule-period" data-period="pay">Pay Week</button></div>'+
+      '<button type="button" class="'+(ui.periodMode==="pay"?"active":"")+'" data-action="schedule-period" data-period="pay">Pay Week</button>'+
+      '<button type="button" class="'+(ui.periodMode==="work"?"active":"")+'" data-action="schedule-period" data-period="work">Work Week</button></div>'+
     '<div class="schedule-period-caption"><strong>'+esc(periodHeader(p))+'</strong></div>'+
     timeSummary(totals)+
     
@@ -434,9 +450,9 @@ function eventForm(item={}){
   const action=b.dataset.action;
   if(action==="schedule-jump"){ui.domain=b.dataset.domain||"work";if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="fourweeks"))ui.mode="week";if(b.dataset.date){ui.selected=b.dataset.date;ui.mode="week";ui.periodMode="work";}openSchedule();return true;}
   if(!action.startsWith("schedule-"))return false;
-  if(action==="schedule-domain"){ui.domain=b.dataset.domain;if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="fourweeks"))ui.mode="week";openSchedule(false);}
-  if(action==="schedule-mode"){ui.mode=b.dataset.mode;if(ui.mode==="fourweeks"){const date=fromDate(ui.selected);ui.fourWeekStart=localDate(shiftDate(date,-date.getDay()));}openSchedule(false);}
-  if(action==="schedule-period"){ui.periodMode=b.dataset.period==="pay"?"pay":"work";openSchedule(false);}
+  if(action==="schedule-domain"){ui.domain=b.dataset.domain;if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="fourweeks"))ui.mode="week";rememberUi();openSchedule(false);}
+  if(action==="schedule-mode"){ui.mode=b.dataset.mode;if(ui.mode==="fourweeks"){const date=fromDate(ui.selected);ui.fourWeekStart=localDate(shiftDate(date,-date.getDay()));}rememberUi();openSchedule(false);}
+  if(action==="schedule-period"){ui.periodMode=b.dataset.period==="pay"?"pay":"work";rememberUi();openSchedule(false);}
   if(action==="schedule-select"){ui.selected=b.dataset.date;openSchedule(false);}
   if(action==="schedule-prev"||action==="schedule-next"){const sign=action==="schedule-prev"?-1:1;const d=fromDate(ui.selected);if(ui.mode==="fourweeks"){ui.fourWeekStart=localDate(shiftDate(fromDate(ui.fourWeekStart),28*sign));ui.selected=ui.fourWeekStart;}else{ui.selected=localDate(ui.mode==="day"?shiftDate(d,sign):ui.mode==="week"?shiftDate(d,7*sign):new Date(d.getFullYear(),d.getMonth()+sign,Math.min(d.getDate(),new Date(d.getFullYear(),d.getMonth()+sign+1,0).getDate())));}openSchedule(false);}
   if(action==="schedule-today"){const date=new Date();ui.selected=localDate(date);ui.fourWeekStart=localDate(shiftDate(date,-date.getDay()));openSchedule(false);}
@@ -558,7 +574,7 @@ function eventForm(item={}){
   }
   return false;
  }
- function setDomain(domain){if(["work","school","personal","all"].includes(domain)){ui.domain=domain;if((domain==="work"&&ui.mode==="day")||(domain!=="work"&&ui.mode==="fourweeks"))ui.mode="week";}}
+ function setDomain(domain){if(["work","school","personal","all"].includes(domain)){ui.domain=domain;if((domain==="work"&&ui.mode==="day")||(domain!=="work"&&ui.mode==="fourweeks"))ui.mode="week";rememberUi();}}
  return{render,homeSummary,homeWorkShifts,handleAction,handleInput,handleSubmit,setDomain};
 }
 window.CommandSchedule={create,validate:(e)=>({

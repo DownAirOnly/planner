@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#101719">
   <meta name="description" content="A quieter place to keep track of what matters.">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Command">
-  <link rel="manifest" href="./manifest.webmanifest?v=12">
-  <link rel="icon" href="./icon.svg?v=12" type="image/svg+xml">
+  <script>if(navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches)document.documentElement.classList.add('command-standalone');</script>
+  <link rel="manifest" href="./manifest.webmanifest?v=13">
+  <link rel="icon" href="./icon.svg?v=13" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./apple-touch-icon-v9.png">
-  <link rel="stylesheet" href="./styles.css?v=12">
-  <link rel="stylesheet" href="./schedule.css?v=12">
+  <link rel="stylesheet" href="./styles.css?v=13">
+  <link rel="stylesheet" href="./schedule.css?v=13">
   <title>Command — Personal Dashboard</title>
 </head>
 <body>
@@ -20,7 +20,7 @@
     <header class="topbar">
       <button class="brand" data-action="tab" data-view="home" aria-label="Command home"><span class="brand-mark">c<span>.</span></span><span class="brand-name">command<span>.</span></span></button>
       <div class="top-actions">
-        <span class="device-note" title="Saved locally on this browser"><span class="status-dot"></span> On this device</span>
+        
         <button class="icon-button" data-action="settings" aria-label="Open settings"><svg class="icon"><use href="./icons.svg#settings"></use></svg></button>
       </div>
     </header>
@@ -35,9 +35,9 @@
   <div id="overlay"></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <input id="import-file" type="file" accept=".json,application/json" hidden>
-  <script src="./timekeeping.js?v=12" defer></script>
-  <script src="./schedule-import.js?v=12" defer></script>
-  <script src="./schedule.js?v=12" defer></script>
-  <script src="./app.js?v=12" defer></script>
+  <script src="./timekeeping.js?v=13" defer></script>
+  <script src="./schedule-import.js?v=13" defer></script>
+  <script src="./schedule.js?v=13" defer></script>
+  <script src="./app.js?v=13" defer></script>
 </body>
 </html>
