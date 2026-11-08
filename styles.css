@@ -13,19 +13,28 @@
 .page-heading-actions-only{justify-content:flex-end;margin:0 0 10px;min-height:0}
 .page-heading-actions-only .button{min-height:38px}
 
-/* v11 iPhone cold-launch navigation: safe-area below, not inside, tab bar. */
+/* v12: fixed navigation must reach the bottom edge on first iOS PWA launch.
+   The home-indicator safe area belongs INSIDE the nav, not below it.
+   No translateX centering on mobile: Safari can retain a stale composited
+   fixed position until a tab press triggers layout. */
 @media(max-width:620px){
  .tabbar{
-  bottom:env(safe-area-inset-bottom,0px);
-  padding:9px 6px 8px;
-  border-radius:18px;
+  position:fixed;
+  inset-inline:0;
+  left:0;
+  right:0;
+  bottom:0;
+  width:100%;
+  max-width:none;
+  transform:none;
+  margin:0;
+  padding:9px 6px calc(8px + env(safe-area-inset-bottom,0px));
+  border-radius:18px 18px 0 0;
+  border-bottom:0;
   background:#172022;
   -webkit-backdrop-filter:none;
   backdrop-filter:none;
+  box-sizing:border-box;
  }
- .tabbar::after{
-  content:"";position:absolute;top:100%;left:0;right:0;
-  height:env(safe-area-inset-bottom,0px);
-  background:var(--bg);pointer-events:none;
- }
+ .tabbar::after{content:none}
 }
