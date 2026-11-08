@@ -215,7 +215,7 @@ function nextEvent(domain){
    '<div class="empty"><strong>No '+(ui.domain==="all"?"events":DOMAINS[ui.domain].label.toLowerCase()+" events")+' scheduled</strong><p>Add an event or import a schedule.</p></div>')+'</section>';
  }
  function render(){
- const modes=ui.domain==="work"?[["week","Week"],["month","Month"],["fourweeks","4 Weeks"]]:[["day","Day"],["week","Week"],["month","Month"],["fourweeks","4 Weeks"]];
+ const modes=ui.domain==="work"?[["week","Week"],["month","Month"],["fourweeks","4 Weeks"]]:[["day","Day"],["week","Week"],["month","Month"]];
  return '<div class="schedule-domain-picker" role="group" aria-label="Calendar category">'+["work","school","personal","all"].map(d=>'<button data-action="schedule-domain" data-domain="'+d+'" class="'+(ui.domain===d?"active":"")+'">'+(d==="all"?"All":DOMAINS[d].label)+'</button>').join("")+'</div>'+
  '<div class="schedule-view-bar"><div class="schedule-view-picker" role="group" aria-label="Calendar view">'+modes.map(([mode,label])=>'<button data-action="schedule-mode" data-mode="'+mode+'" class="'+(ui.mode===mode?"active":"")+'">'+label+'</button>').join("")+'</div><div class="schedule-view-actions"><button class="button secondary" data-action="schedule-import">'+ic("upload")+' Import</button><button class="button" data-action="schedule-add">'+ic("plus")+' Add</button></div></div>'+
  calendar()+(ui.domain==="work"?workShiftList():eventRows())+
@@ -429,9 +429,9 @@ function eventForm(item={}){
  }
  function handleAction(b){
   const action=b.dataset.action;
-  if(action==="schedule-jump"){ui.domain=b.dataset.domain||"work";if(ui.domain==="work"&&ui.mode==="day")ui.mode="week";if(b.dataset.date){ui.selected=b.dataset.date;ui.mode="week";ui.periodMode="work";}openSchedule();return true;}
+  if(action==="schedule-jump"){ui.domain=b.dataset.domain||"work";if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="fourweeks"))ui.mode="week";if(b.dataset.date){ui.selected=b.dataset.date;ui.mode="week";ui.periodMode="work";}openSchedule();return true;}
   if(!action.startsWith("schedule-"))return false;
-  if(action==="schedule-domain"){ui.domain=b.dataset.domain;if(ui.domain==="work"&&ui.mode==="day")ui.mode="week";openSchedule(false);}
+  if(action==="schedule-domain"){ui.domain=b.dataset.domain;if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="fourweeks"))ui.mode="week";openSchedule(false);}
   if(action==="schedule-mode"){ui.mode=b.dataset.mode;openSchedule(false);}
   if(action==="schedule-period"){ui.periodMode=b.dataset.period==="pay"?"pay":"work";openSchedule(false);}
   if(action==="schedule-select"){ui.selected=b.dataset.date;openSchedule(false);}
@@ -555,7 +555,7 @@ function eventForm(item={}){
   }
   return false;
  }
- function setDomain(domain){if(["work","school","personal","all"].includes(domain))ui.domain=domain;}
+ function setDomain(domain){if(["work","school","personal","all"].includes(domain)){ui.domain=domain;if((domain==="work"&&ui.mode==="day")||(domain!=="work"&&ui.mode==="fourweeks"))ui.mode="week";}}
  return{render,homeSummary,homeWorkShifts,handleAction,handleInput,handleSubmit,setDomain};
 }
 window.CommandSchedule={create,validate:(e)=>({
