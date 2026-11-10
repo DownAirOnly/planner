@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 22;
+  const APP_VERSION = 23;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -186,6 +186,9 @@
       (data.ideas.length?data.ideas.map(i=>'<div class="card"><div class="idea-card"><div class="idea-symbol">'+icon("bulb")+'</div><div style="flex:1;min-width:0"><div class="card-row"><h2 class="card-title">'+escapeHtml(i.title)+'</h2><button class="task-edit" data-action="edit" data-kind="idea" data-id="'+escapeHtml(i.id)+'" aria-label="Edit idea">'+icon("more")+'</button></div><p class="card-desc">'+escapeHtml(i.description||"No details yet.")+'</p><button class="subtle-link" style="margin-top:10px" data-action="promote-idea" data-id="'+escapeHtml(i.id)+'">Turn into project '+icon("arrow","tiny")+'</button></div></div></div>').join(""):empty("No saved ideas","Save an idea here when it's not a priority yet."));
   }
   function moneyView(){return window.CommandMoney?.render?.()||'<section class="section"><h2>Money</h2><p>Finance migration is not initialized.</p></section>';}
+  window.addEventListener("command-money-updated",()=>{
+    if(state.view==="money"&&!overlay.firstChild)render();
+  });
   function taskNavigation(){
     return '<div class="task-navigation" role="group" aria-label="Tasks organization">'+
       [["tasks","Tasks"],["projects","Projects"],["areas","Areas"],["ideas","Ideas"]].map(([view,label])=>
@@ -301,9 +304,9 @@
   function settings(){
     showSheet('<div class="sheet-head"><h2 class="sheet-title">Settings & backup</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+icon("x")+'</button></div>'+
       '<div class="settings-group"><h3>Google account</h3><div id="command-account-content">'+accountContent()+'</div></div>'+ 
-      '<div class="settings-group"><h3>Storage</h3><p>Command saves locally. Google sign-in enables explicit cloud backups when configured. Automatic synchronization is not active.</p></div>'+
-      '<div class="settings-group"><h3>Back up your data</h3><p>Export a JSON file before switching phones, clearing browser data, or making significant changes.</p><button class="button" data-action="export">'+icon("download")+' Export backup</button><button class="button secondary" data-action="import">'+icon("upload")+' Import backup</button></div>'+
-      '<div class="settings-group"><h3>Clear local data</h3><p>Clears every local project, task, idea, and shift. No sample content will be restored. If records exist, a local recovery copy is saved first. Cloud data is not touched.</p><button class="button danger" data-action="reset">'+icon("trash")+' Clear all local data</button></div>'+
+      '<div class="settings-group"><h3>Storage</h3><p>Command tasks and shifts save locally and have an optional account backup. Money is stored separately, with its own verification and JSON export under the Money tab. Finance cloud backup is not yet configured.</p></div>'+
+      '<div class="settings-group"><h3>Back up your data</h3><p>This export includes tasks, projects and schedules. To back up finances, use Money → Export Money JSON. Keep both files until finance cloud backup is verified.</p><button class="button" data-action="export">'+icon("download")+' Export backup</button><button class="button secondary" data-action="import">'+icon("upload")+' Import backup</button></div>'+
+      '<div class="settings-group"><h3>Clear local data</h3><p>Clears local projects, tasks, ideas, and shifts only. The separate Money ledger is never cleared by this action. No starter content is restored, and any cloud data is untouched.</p><button class="button danger" data-action="reset">'+icon("trash")+' Clear all local data</button></div>'+
       (localStorage.getItem(RECOVERY_KEY)?'<div class="settings-group"><h3>Recovery</h3><p>Restore the saved copy from before a previous clear. This replaces the current data on this device.</p><button class="button secondary" data-action="restore-local-recovery">Restore last cleared data</button></div>':'')+
       '<details class="settings-group"><summary>Display diagnostics</summary><p>For troubleshooting the iPhone Home Screen layout.</p><button class="button secondary" data-action="display-diagnostics">Copy display details</button></details>'+ 
       '<div class="settings-group"><h3>About</h3><p>Command v'+APP_VERSION+' · Local storage, Google sign-in and manual backup when connected.</p></div>');
