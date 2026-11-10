@@ -96,3 +96,11 @@ html,body{background:var(--bg)}
  .home-quick-action .icon{width:16px;height:16px}
  .home-area-link{padding-left:12px;padding-right:27px}
 }
+
+/* v22 — four deliberate top-level destinations. Inbox lives in the header. */
+.notification-button{position:relative}
+.notification-dot{position:absolute;right:5px;top:5px;width:7px;height:7px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 2px var(--bg)}
+.notification-dot[hidden]{display:none}
+.task-navigation{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:5px;margin:10px 0 18px}
+.task-navigation button{border:0;border-radius:10px;background:none;color:var(--muted);font-size:12px;font-weight:750;padding:11px 3px}
+.task-navigation button.active{background:#355149;color:var(--mint)}

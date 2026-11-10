@@ -9,11 +9,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Command">
   <script>if(navigator.standalone===true||window.matchMedia('(display-mode: standalone)').matches)document.documentElement.classList.add('command-standalone');</script>
-  <link rel="manifest" href="./manifest.webmanifest?v=21">
-  <link rel="icon" href="./icon.svg?v=21" type="image/svg+xml">
+  <link rel="manifest" href="./manifest.webmanifest?v=22">
+  <link rel="icon" href="./icon.svg?v=22" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./apple-touch-icon-v9.png">
-  <link rel="stylesheet" href="./styles.css?v=21">
-  <link rel="stylesheet" href="./schedule.css?v=21">
+  <link rel="stylesheet" href="./styles.css?v=22">
+  <link rel="stylesheet" href="./schedule.css?v=22">
   <title>Command — Personal Dashboard</title>
 </head>
 <body>
@@ -22,6 +22,7 @@
       <button class="brand" data-action="tab" data-view="home" aria-label="Command home"><span class="brand-mark">c<span>.</span></span><span class="brand-name">command<span>.</span></span></button>
       <div class="top-actions">
         
+        <button class="icon-button notification-button" data-action="notifications" aria-label="Open inbox and notifications"><svg class="icon"><use href="./icons.svg#bell"></use></svg><span class="notification-dot" hidden></span></button>
         <button class="icon-button" data-action="settings" aria-label="Open settings"><svg class="icon"><use href="./icons.svg#settings"></use></svg></button>
       </div>
     </header>
@@ -29,17 +30,17 @@
     <nav class="tabbar" aria-label="Main navigation">
       <button class="tab active" data-action="tab" data-view="home"><svg class="icon"><use href="./icons.svg#home"></use></svg><span>Home</span></button>
       <button class="tab" data-action="tab" data-view="schedule"><svg class="icon"><use href="./icons.svg#calendar"></use></svg><span>Schedule</span></button>
-      <button class="tab" data-action="tab" data-view="areas"><svg class="icon"><use href="./icons.svg#folder"></use></svg><span>Areas</span></button>
-      <button class="tab" data-action="tab" data-view="inbox"><svg class="icon"><use href="./icons.svg#check"></use></svg><span>Inbox</span></button>
+      <button class="tab" data-action="tab" data-view="money"><svg class="icon"><use href="./icons.svg#wallet"></use></svg><span>Money</span></button>
+      <button class="tab" data-action="tab" data-view="tasks"><svg class="icon"><use href="./icons.svg#check"></use></svg><span>Tasks</span></button>
     </nav>
   </div>
   <div id="overlay"></div>
   <div id="toast" role="status" aria-live="polite"></div>
   <input id="import-file" type="file" accept=".json,application/json" hidden>
-  <script src="./timekeeping.js?v=21" defer></script>
-  <script src="./schedule-import.js?v=21" defer></script>
-  <script src="./schedule.js?v=21" defer></script>
-  <script src="./app.js?v=21" defer></script>
-  <script type="module" src="./cloud.js?v=21"></script>
+  <script src="./timekeeping.js?v=22" defer></script>
+  <script src="./schedule-import.js?v=22" defer></script>
+  <script src="./schedule.js?v=22" defer></script>
+  <script src="./app.js?v=22" defer></script>
+  <script type="module" src="./cloud.js?v=22"></script>
 </body>
 </html>

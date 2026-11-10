@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 21;
+  const APP_VERSION = 22;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -185,9 +185,27 @@
     return '<button class="back" data-action="tab" data-view="areas">'+icon("chevron-left","tiny")+' Projects</button><div class="page-heading"><div><h1 class="page-title">Ideas</h1></div><button class="button" data-action="edit" data-kind="idea">'+icon("plus")+' Add</button></div>'+
       (data.ideas.length?data.ideas.map(i=>'<div class="card"><div class="idea-card"><div class="idea-symbol">'+icon("bulb")+'</div><div style="flex:1;min-width:0"><div class="card-row"><h2 class="card-title">'+escapeHtml(i.title)+'</h2><button class="task-edit" data-action="edit" data-kind="idea" data-id="'+escapeHtml(i.id)+'" aria-label="Edit idea">'+icon("more")+'</button></div><p class="card-desc">'+escapeHtml(i.description||"No details yet.")+'</p><button class="subtle-link" style="margin-top:10px" data-action="promote-idea" data-id="'+escapeHtml(i.id)+'">Turn into project '+icon("arrow","tiny")+'</button></div></div></div>').join(""):empty("No saved ideas","Save an idea here when it's not a priority yet."));
   }
+  function moneyView(){return window.CommandMoney?.render?.()||'<section class="section"><h2>Money</h2><p>Finance migration is not initialized.</p></section>';}
+  function taskNavigation(){
+    return '<div class="task-navigation" role="group" aria-label="Tasks organization">'+
+      [["tasks","Tasks"],["projects","Projects"],["areas","Areas"],["ideas","Ideas"]].map(([view,label])=>
+      '<button data-action="tab" data-view="'+view+'" class="'+(state.view===view?"active":"")+'">'+label+'</button>').join("")+'</div>';
+  }
+  function notifications(){
+    const count=data.tasks.filter(t=>t.status!=="done"&&(!t.projectId&&!t.areaId||t.needsReview)).length+
+      data.projects.filter(p=>p.status!=="done"&&(p.needsReview||!p.areaId)).length;
+    showSheet('<div class="sheet-head"><h2 class="sheet-title">Inbox & notifications'+(count?' · '+count:'')+'</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+icon("x")+'</button></div>'+
+      '<p class="page-description">Unsorted captures and records that need review. Nothing is marked urgent without a reason.</p>'+inbox());
+  }
   function render(){
-    $(".tabbar").querySelectorAll(".tab").forEach(btn=>{const selected=btn.dataset.view===(['ideas','tasks','projects'].includes(state.view)?'areas':state.view);btn.classList.toggle("active",selected);btn.setAttribute("aria-current",selected?"page":"false");});
-    screen.innerHTML=state.projectId?projectDetail():state.view==='areas'?areas():state.view==='inbox'?inbox():state.view==="home"?home():state.view==="schedule"?schedule.render():state.view==="projects"?(state.projectId?projectDetail():projects()):state.view==="tasks"?tasks():ideas();
+    $(".tabbar").querySelectorAll(".tab").forEach(btn=>{const selected=btn.dataset.view===(['ideas','tasks','projects','areas'].includes(state.view)?'tasks':state.view);btn.classList.toggle("active",selected);btn.setAttribute("aria-current",selected?"page":"false");});
+    screen.innerHTML=(['ideas','tasks','projects','areas'].includes(state.view)?taskNavigation():'')+
+      (state.projectId?projectDetail():state.view==='areas'?areas():state.view==="home"?home():state.view==="schedule"?schedule.render():state.view==="money"?moneyView():state.view==="projects"?projects():state.view==="tasks"?tasks():ideas());
+    const pending=data.tasks.filter(t=>t.status!=="done"&&(!t.projectId&&!t.areaId||t.needsReview)).length+
+      data.projects.filter(p=>p.status!=="done"&&(p.needsReview||!p.areaId)).length;
+    const dot=document.querySelector(".notification-dot");
+    if(dot){dot.hidden=!pending;dot.title=pending+" items need organizing";}
+
   }
   const opt=(value,label,selected)=>'<option value="'+escapeHtml(value)+'" '+(value===selected?"selected":"")+'>'+escapeHtml(label)+'</option>';
   function textField(label,name,value,required=false,type="text"){
@@ -328,6 +346,7 @@
       else alert(report);
       return;
     }
+    if(action==='notifications'){notifications();return;}
     if(action==='quick-add'){quickAdd();return;}
     if(action==='home-add-plan'){
       schedule.setDomain("personal");
@@ -347,7 +366,7 @@
     }
     if(action==="open-ideas"){switchTab("ideas");return;}
     if(action==="backdrop"){if(event.target===button)closeSheet();return;}
-    if(action==="tab"){closeSheet();switchTab(button.dataset.view);return;}
+    if(action==="tab"){if(button.dataset.view==="inbox"){notifications();return;}closeSheet();switchTab(button.dataset.view);return;}
     if(action==="settings"){settings();return;}
     if(action==="close-modal"){closeSheet();return;}
     if(action==="edit"){openEditor(kind,id,button.dataset.project||"");return;}
