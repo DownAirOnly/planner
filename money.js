@@ -90,6 +90,19 @@
    const digest=await crypto.subtle.digest("SHA-256",bytes);
    return [...new Uint8Array(digest)].map(n=>n.toString(16).padStart(2,"0")).join("");
  }
+ function compareLedgers(incoming,previous){
+   if(!previous)return {added:incoming.transactions.length,changed:0,unchanged:0,missing:0};
+   const old=new Map(previous.transactions.map(t=>[t.id,t]));
+   const fresh=new Map(incoming.transactions.map(t=>[t.id,t]));
+   let added=0,changed=0,unchanged=0,missing=0;
+   for(const [id,tx] of fresh){
+     if(!old.has(id))added++;
+     else if(JSON.stringify(old.get(id))===JSON.stringify(tx))unchanged++;
+     else changed++;
+   }
+   for(const id of old.keys())if(!fresh.has(id))missing++;
+   return {added,changed,unchanged,missing};
+ }
  let record=null,error="",pending=null,verified=false,view="overview",span=7,month="all",page=0;
  function read(){
    const raw=localStorage.getItem(KEY);
@@ -108,6 +121,8 @@
    if(!pending)return;
    if(record?.report?.transactions>0&&pending.report.transactions===0)
      throw Error("Refusing to replace financial history with a settings-only file.");
+   if(pending.diff?.missing)
+     throw Error("The selected export is missing "+pending.diff.missing+" previously imported transaction IDs. No records were changed. Export a newer, complete Everyday finance file.");
    if(record?.sha256===pending.sha256){pending=null;dispatch();return;}
    // No automatic merge or overwrite: an updated export has to be consciously
    // reviewed, and the previous local copy is preserved for recovery.
@@ -207,11 +222,14 @@
    const r=pending.report;
    const current=record?.report;
    const same=record?.sha256===pending.sha256;
+   const diff=pending.diff||compareLedgers(pending.finance,record?.data);
    return '<section class="money-preview" role="status"><div class="section-head"><h2>Import verification preview</h2><button data-money-action="cancel-preview">Cancel</button></div>'+
      '<p><strong>'+e(pending.filename)+'</strong> · '+e(pending.kind)+(same?' · Same as saved copy':'')+'</p>'+
      '<div class="money-stats">'+card("Transactions",String(r.transactions),current?"Current "+current.transactions:"")+
      card("Recurring items",String(r.schedules),current?"Current "+current.schedules:"")+
      card("Monthly budgets",String(r.categoryLimits),current?"Current "+current.categoryLimits:"")+'</div>'+
+     (current?'<p class="money-help">Compared with Command: '+diff.added+' new IDs, '+diff.changed+' changed records, '+diff.unchanged+' unchanged, '+diff.missing+' MISSING from this export.</p>':'')+
+     (diff.missing?'<p class="money-warning">This export omits previously imported transactions. Import is blocked to protect existing history.</p>':'')+
      '<div class="money-compare"><div><span>Income</span><strong>'+cents(r.income)+'</strong></div>'+
      '<div><span>Expenses</span><strong>'+cents(r.expense)+'</strong></div>'+
      '<div><span>Transfers (not spending)</span><strong>'+cents(r.transfer)+'</strong></div>'+
@@ -220,7 +238,8 @@
      '<div><span>Rules / pending bank rows</span><strong>'+r.rules+' / '+r.unresolvedBank+'</strong></div></div>'+
      '<p class="money-warning">Everyday is NOT changed. Importing makes an exact local copy; it does not merge entries, and it does not upload to Firebase. '+(record?'The previous Command finance copy is saved for recovery.':'')+'</p>'+
      (same?'<p class="money-ok">This file is already imported.</p>':
-       '<button class="button" data-money-action="confirm-import">Import this finance file</button>')+'</section>';
+       (diff.missing?'<p>Choose a newer full export from Everyday.</p>':
+       '<button class="button" data-money-action="confirm-import">Import this finance file</button>'))+'</section>';
  }
 
  function cloudRecord(){
@@ -294,7 +313,7 @@
  function render(){
    const importControls='<input id="money-import-input" type="file" accept=".json,application/json" hidden>'+
      '<div class="money-actions"><button class="button" data-money-action="pick-file">Import Everyday finance</button>'+
-     (record?'<button class="button secondary" data-money-action="export-finance">Export Money JSON</button>':'')+
+     (record?'<button class="button secondary" data-money-action="export-finance">Export Money JSON</button><button class="button secondary" data-money-action="export-audit">Audit report</button>':'')+
      '<button class="button secondary" data-money-action="cloud-check">Check cloud backup</button>'+
      (record?'<button class="button secondary" data-money-action="cloud-backup">Back up to Firebase</button>':'')+'</div>';
    const header='<div class="money-header"><div><h1>Money</h1><p>Your paychecks, purchases, bills and budgets</p></div></div>';
@@ -332,7 +351,7 @@
    if(!file)return;
    if(file.size>25*1024*1024)throw Error("Finance export exceeds 25 MB.");
    const input=JSON.parse(await file.text()),v=validateFile(input),digest=await sha(v.finance);
-   pending={...v,filename:file.name,sha256:digest};
+   pending={...v,filename:file.name,sha256:digest,diff:compareLedgers(v.finance,record?.data)};
    dispatch();
  }
  document.addEventListener("click",async event=>{
@@ -348,6 +367,13 @@
      if(action==="next-page"){page++;dispatch();}
      if(action==="month"){month=button.value;page=0;dispatch();}
      if(action==="export-finance"&&record)download("command-finances-"+day()+".json",{format:FORMAT,section:"finances",data:record.data});
+     if(action==="export-audit"&&record){
+       download("command-money-audit-"+day()+".json",{
+         format:"command-money-audit-v1",sourceFile:record.sourceFilename,importedAt:record.importedAt,
+         sha256:record.sha256,locallyVerified:verified,report:record.report,
+         cloudVerified:cloudRecord()?{verifiedAt:cloudRecord().verifiedAt,revision:cloudRecord().revision}:null
+       });
+     }
      if(action==="cloud-backup"){await backupCloud();return;}
      if(action==="cloud-check"){await inspectCloud();return;}
      if(action==="confirm-import"){
