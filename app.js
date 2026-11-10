@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 15;
+  const APP_VERSION = 16;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -16,32 +16,10 @@
   const validArea=(v)=>AREAS.some(a=>a[0]===v)?v:'';
   const areaName=(id)=>AREAS.find(a=>a[0]===id)?.[1]||'Inbox';
   const itemKinds=[['task','Task'],['decision','Decision'],['followup','Follow-up']];
-  const defaults = () => ({
-    schemaVersion:5,
-    schedulePrefs:{usualWorkdays:[5,6,0,1,2]},
-    events:[],
-    projects:[
-      {id:"everyday",title:"Everyday",category:"Software",status:"active",description:"Fitness, nutrition, and finance PWA.",next:"Finalize Workout Buddy's approved exercise swaps.",reviewDate:"",updatedAt:"2026-11-06"},
-      {id:"botanica",title:"Botanica",category:"Software",status:"active",description:"Herbal inventory and order management.",next:"Run an end-to-end inventory workflow audit.",reviewDate:"",updatedAt:"2026-11-06"},
-      {id:"college",title:"College plan",category:"Education",status:"active",description:"Confirm the next course and explore program prerequisites.",next:"Verify Biology course and registration requirements.",reviewDate:"",updatedAt:"2026-11-06"},
-      {id:"backups",title:"PC backups",category:"Home",status:"waiting",description:"Reliable automatic backups for a Windows computer.",next:"Set up a versioned backup and test restoring a file.",reviewDate:"",updatedAt:"2026-11-06"},
-      {id:"portfolio",title:"Portfolio",category:"Software",status:"active",description:"Publish accurate project screenshots and working links.",next:"Review every project link and screenshot.",reviewDate:"",updatedAt:"2026-11-06"},
-      {id:"edc",title:"EDC Planner",category:"Software",status:"active",description:"Event planning PWA.",next:"Verify the deployed site's mobile experience.",reviewDate:"",updatedAt:"2026-11-06"}
-    ],
-    tasks:[
-      {id:"task-1",title:"Test Botanica from restock through production",projectId:"botanica",status:"open",priority:"high",dueDate:"",notes:"Record friction, unexpected behavior, and whether the updated stock remains correct after refresh."},
-      {id:"task-2",title:"Finalize Workout Buddy exercise swap behavior",projectId:"everyday",status:"open",priority:"medium",dueDate:"",notes:"Keep completed sets associated with their original exercises."},
-      {id:"task-3",title:"Verify Everyday backup and recovery",projectId:"everyday",status:"open",priority:"medium",dueDate:"",notes:"Test export, import, and synchronization without risking production records."},
-      {id:"task-4",title:"Check Biology enrollment requirements",projectId:"college",status:"open",priority:"high",dueDate:"",notes:"Confirm lab, prerequisites, term availability, and aid."},
-      {id:"task-5",title:"Test restoring a backed-up Windows file",projectId:"backups",status:"open",priority:"medium",dueDate:"",notes:"An actual restore is the acceptance test."},
-      {id:"task-6",title:"Audit portfolio links and screenshots",projectId:"portfolio",status:"open",priority:"medium",dueDate:"",notes:"Replace mock-looking images with accurate captures using dummy data."},
-      {id:"task-7",title:"Check the EDC Planner on iPhone",projectId:"edc",status:"open",priority:"low",dueDate:"",notes:"Review navigation, installation, and core event flows."}
-    ],
-    ideas:[
-      {id:"idea-1",title:"Pokémon Mystery Universe iOS client",description:"Research official server protocol compatibility and a native iOS client.",createdAt:"2026-11-06"},
-      {id:"idea-2",title:"Multi-model LLM council",description:"Compare multiple model responses and summarize areas of agreement and disagreement.",createdAt:"2026-11-06"}
-    ]
-  });
+  // v16: Initial data is intentionally empty. Never seed fictional obligations.
+  const defaults=()=>({schemaVersion:5,schedulePrefs:{usualWorkdays:[5,6,0,1,2]},events:[],projects:[],tasks:[],ideas:[],focus:[],dismissed:[]});
+  const RECOVERY_KEY="command.recovery.latest";
+  const hasContent=record=>["projects","tasks","ideas","events"].some(k=>Array.isArray(record?.[k])&&record[k].length);
   const normalize = (obj) => {
     if(!obj || typeof obj!=="object" || !Array.isArray(obj.projects) || !Array.isArray(obj.tasks) || !Array.isArray(obj.ideas)) throw new Error("This is not a Command backup.");
     const cleanText=(v)=>typeof v==="string"?v.slice(0,5000):"";
@@ -59,7 +37,7 @@
     return {schemaVersion:5,projects,tasks,ideas,events,schedulePrefs,focus:Array.isArray(obj.focus)?obj.focus.filter(id=>tasks.some(t=>t.id===id)):[],dismissed:Array.isArray(obj.dismissed)?obj.dismissed.filter(id=>tasks.some(t=>t.id===id)):[]};
   };
   let data, loadFailed=false;
-  try { const stored=localStorage.getItem(KEY); data=stored?normalize(JSON.parse(stored)):normalize({...defaults(),schemaVersion:4}); } catch(err){loadFailed=true;console.warn("Stored data could not be loaded.",err);data=normalize({...defaults(),schemaVersion:4});}
+  try { const stored=localStorage.getItem(KEY); data=stored?normalize(JSON.parse(stored)):normalize(defaults()); } catch(err){loadFailed=true;console.warn("Stored data could not be loaded.",err);data=normalize(defaults());}
   const state={view:"home",projectId:null,areaId:null,taskFilter:"open",query:""};
   const schedule=window.CommandSchedule.create({getEvents:()=>data.events,updateEvents:(next)=>{data.events=next;save();render();},getSchedulePrefs:()=>data.schedulePrefs,setSchedulePrefs:(value)=>{data.schedulePrefs=value;save();render();},showSheet:(body)=>showSheet(body),closeSheet:()=>closeSheet(),toast:(message)=>toast(message),openSchedule:(scroll=true)=>{state.view="schedule";state.projectId=null;render();if(scroll){screen.scrollTop=0;window.scrollTo({top:0,behavior:"instant"});}}});
   function save(){
@@ -233,7 +211,8 @@
     showSheet('<div class="sheet-head"><h2 class="sheet-title">Settings & backup</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+icon("x")+'</button></div>'+
       '<div class="settings-group"><h3>Storage</h3><p>Command currently saves locally. Google sign-in and synchronization are planned but are not active yet. Export a backup before clearing app data.</p></div>'+
       '<div class="settings-group"><h3>Back up your data</h3><p>Export a JSON file before switching phones, clearing browser data, or making significant changes.</p><button class="button" data-action="export">'+icon("download")+' Export backup</button><button class="button secondary" data-action="import">'+icon("upload")+' Import backup</button></div>'+
-      '<div class="settings-group"><h3>Reset starter data</h3><p>Replace your local data with the original starter projects. Export first if you want to keep your current work.</p><button class="button danger" data-action="reset">'+icon("trash")+' Reset data</button></div>'+
+      '<div class="settings-group"><h3>Clear local data</h3><p>Clears every local project, task, idea, and shift. No sample content will be restored. If records exist, a local recovery copy is saved first. Cloud data is not touched.</p><button class="button danger" data-action="reset">'+icon("trash")+' Clear all local data</button></div>'+
+      (localStorage.getItem(RECOVERY_KEY)?'<div class="settings-group"><h3>Recovery</h3><p>Restore the saved copy from before a previous clear. This replaces the current data on this device.</p><button class="button secondary" data-action="restore-local-recovery">Restore last cleared data</button></div>':'')+
       '<details class="settings-group"><summary>Display diagnostics</summary><p>For troubleshooting the iPhone Home Screen layout.</p><button class="button secondary" data-action="display-diagnostics">Copy display details</button></details>'+ 
       '<div class="settings-group"><h3>About</h3><p>Command v'+APP_VERSION+' · Local storage with backup export; account sync not configured.</p></div>');
   }
@@ -309,7 +288,36 @@
     }
     if(action==="export"){exportData();return;}
     if(action==="import"){importInput.click();return;}
-    if(action==="reset"){if(confirm("Reset ALL data on this device to the starter list? Export a backup first. This cannot be undone.")){data=normalize({...defaults(),schemaVersion:4});save();closeSheet();switchTab("home");toast("Starter data restored");}return;}
+    if(action==="reset"){
+      if(prompt("Clear ALL projects, tasks, ideas, and shifts on this device? Type DELETE to confirm.")!=="DELETE")return;
+      try{
+        // A verified recovery copy is a prerequisite to deleting nonempty content.
+        if(hasContent(data)){
+          const previous=localStorage.getItem(KEY)||JSON.stringify(data);
+          localStorage.setItem(RECOVERY_KEY,previous);
+          localStorage.setItem("command.recovery.savedAt",new Date().toISOString());
+        }
+        const blank=normalize(defaults());
+        localStorage.setItem(KEY,JSON.stringify(blank));
+        data=blank;
+        try{localStorage.removeItem("command.schedule.ui.v1");}catch(e){console.warn("Schedule UI preference could not be cleared",e);}
+        closeSheet();switchTab("home");toast("Local data cleared");
+      }catch(err){alert("Could not safely clear local data: "+err.message);}
+      return;
+    }
+    if(action==="restore-local-recovery"){
+      const saved=localStorage.getItem(RECOVERY_KEY);
+      if(!saved){alert("No recovery copy is available.");return;}
+      if(prompt("Replace current local data with the last cleared data? Type RESTORE to confirm.")!=="RESTORE")return;
+      try{
+        const recovered=normalize(JSON.parse(saved));
+        if(hasContent(data))localStorage.setItem("command.recovery.beforeRestore",JSON.stringify(data));
+        localStorage.setItem(KEY,JSON.stringify(recovered));
+        data=recovered;
+        closeSheet();switchTab("home");toast("Recovery restored");
+      }catch(err){alert("Could not restore the saved copy: "+err.message);}
+      return;
+    }
   });
   document.addEventListener("change",(event)=>{schedule.handleInput(event.target);});
   document.addEventListener("input",(event)=>{
