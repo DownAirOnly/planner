@@ -34,3 +34,7 @@ As of v14, do not reintroduce `viewport-fit=cover` or a `100dvh` fixed-height sh
 - Location editing shows **Island** when the park is IOA; otherwise **Area**, including when the park is changed during review.
 
 These are specific revisions to the v10-approved layout. Preserve the rest.
+
+## v21 correction — Scheduled is one calendar, not a series of week cards
+
+In Work → Scheduled, show **one continuous seven-column calendar block** beginning at the current pay/work week and continuing through all upcoming individually saved work shifts. Include intervening empty weeks as rows of the same calendar (no separate weekly cards). Place **one chronological shift list** immediately below that calendar, containing shifts from the entire current period (including earlier days in it) and all subsequent saved shifts. Changing Pay Week / Work Week changes the weekday columns (Sunday–Saturday or Friday–Thursday) and the start/end grouping, without fragmenting the calendar. The summary shows the CURRENT selected accounting period. Only indefinite recurring weekly shifts have a finite display horizon of 12 weeks; show that limitation to the user. Do not alter stored events or break overrides.

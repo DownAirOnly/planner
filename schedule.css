@@ -302,3 +302,18 @@
 
 /* v19: Period grouping remains accessible above a long Scheduled list. */
 .schedule-scheduled-view>.schedule-period-switch,.schedule-scheduled-empty>.schedule-period-switch{margin:0 0 3px}
+
+/* v21 — Scheduled uses ONE uninterrupted calendar grid and one shift list. */
+.schedule-scheduled-view{display:flex;flex-direction:column;gap:10px;margin-top:9px}
+.schedule-scheduled-view>.section-head{margin-bottom:0}
+.schedule-scheduled-view>.schedule-period-switch{margin-bottom:0}
+.schedule-scheduled-calendar{padding:12px 10px}
+.schedule-scheduled-calendar .schedule-scheduled-title{margin-bottom:8px}
+.schedule-cal-grid.scheduled .schedule-date{height:43px;gap:4px;padding-top:7px}
+.schedule-cal-grid.scheduled .schedule-date:nth-child(n+8){border-top:1px solid rgba(148,167,165,.11)}
+.schedule-cal-grid.scheduled{row-gap:4px}
+.schedule-month-boundary{position:absolute;top:2px;left:1px;font-size:8px;color:var(--muted);pointer-events:none}
+.schedule-scheduled-agenda{margin-top:8px}
+.schedule-scheduled-agenda .section-head{margin-bottom:8px}
+.schedule-scheduled-agenda .section-head h2{font-size:16px}
+.schedule-scheduled-agenda .schedule-compact-list{margin-top:0}

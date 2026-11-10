@@ -149,7 +149,9 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
      '<button type="button" class="'+(ui.periodMode==="work"?"active":"")+'" data-action="schedule-period" data-period="work">Work Week</button></div>';
  }
  function workPeriodSummary(){
-   const p=period(),items=periodEvents(),totals=timekeeping.aggregate(items);
+   const p=ui.mode==="scheduled"?timekeeping.period(localDate(new Date()),ui.periodMode):period();
+   const items=p.days.flatMap(date=>dateEvents(date,"work").map(e=>({...e,occurrenceDate:date})));
+   const totals=timekeeping.aggregate(items);
    return '<section class="schedule-period-block">'+(ui.mode==="scheduled"?"":periodSelector())+
      '<div class="schedule-period-caption"><strong>'+esc(periodHeader(p))+'</strong></div>'+
      timeSummary(totals)+'</section>';
@@ -169,48 +171,64 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
 }
 
  function scheduledView(){
-   const all=events().filter(e=>e.domain==="work"&&fromDate(e.date));
-   const groups=new Map(),now=new Date();
-   const oldestRecurring=localDate(shiftDate(now,-366));
-   const latestRecurring=localDate(shiftDate(now,366));
-   const add=(event,date)=>{
-     const week=timekeeping.period(date,ui.periodMode).start;
-     if(!groups.has(week))groups.set(week,[]);
-     groups.get(week).push({event,date});
-   };
-   for(const e of all){
-     if(e.repeat!=="weekly"){add(e,e.date);continue;}
-     if(!e.weekdays?.length)continue;
-     // An open-ended recurring event has no last occurrence. Display one year
-     // behind/ahead; dated, non-recurring shifts are included in full.
-     const first=fromDate(e.date<oldestRecurring?oldestRecurring:e.date);
-     const last=fromDate(e.until&&e.until<latestRecurring?e.until:latestRecurring);
-     if(!first||!last)continue;
-     for(let d=first;d<=last;d=shiftDate(d,1)){
-       const date=localDate(d);
-       if(visibleOnDate(e,date))add(e,date);
-     }
-   }
-   const weeks=[...groups.keys()].sort();
-   if(!weeks.length)return '<section class="section schedule-scheduled-empty"><h2>Scheduled</h2>'+periodSelector()+'<div class="empty"><strong>No saved work shifts</strong><p>Import or add a schedule to see its weeks here.</p></div></section>';
-   return '<section class="schedule-scheduled-view"><div class="section-head"><h2>Scheduled</h2><span class="muted">'+weeks.length+' week'+(weeks.length===1?"":"s")+' with shifts</span></div>'+periodSelector()+
-     weeks.map(start=>{
-       const occurrences=groups.get(start).sort((a,b)=>a.date.localeCompare(b.date)||String(a.event.startTime).localeCompare(String(b.event.startTime)));
-       const days=timekeeping.period(start,ui.periodMode).days;
-       const eventsByDate=new Map();
-       for(const occurrence of occurrences){
-         if(!eventsByDate.has(occurrence.date))eventsByDate.set(occurrence.date,[]);
-         eventsByDate.get(occurrence.date).push(occurrence.event);
-       }
-       const calendarDays=days.map(date=>{
-         const d=fromDate(date),count=eventsByDate.get(date)?.length||0,selected=date===ui.selected;
-         return '<button class="schedule-date'+(selected?" selected":"")+'" data-action="schedule-select" data-date="'+date+'" aria-label="'+esc(fullDate(date))+', '+count+' shift'+(count===1?"":"s")+'"><span>'+d.getDate()+'</span>'+(count?'<span class="schedule-dots"><i class="work"></i></span>':"")+'</button>';
-       }).join("");
-       return '<div class="schedule-scheduled-week"><div class="schedule-calendar schedule-scheduled-calendar"><div class="schedule-scheduled-title"><strong>'+esc(labelDate(days[0]))+' – '+esc(labelDate(days[6]))+'</strong><span>'+occurrences.length+' shift'+(occurrences.length===1?"":"s")+'</span></div>'+
-       '<div class="schedule-cal-head">'+days.map(date=>'<span>'+DAYS[fromDate(date).getDay()].charAt(0)+'</span>').join("")+'</div>'+
-       '<div class="schedule-cal-grid week">'+calendarDays+'</div></div>'+
-       '<div class="schedule-compact-list">'+occurrences.map(({event,date})=>workShiftRow(event,date)).join("")+'</div></div>';
-     }).join("")+'</section>';
+  // One continuous, nonfragmented calendar from the CURRENT pay/work week
+  // through the last saved future shift. Do not render a card per week.
+  const todayIso=localDate(new Date());
+  const first=timekeeping.period(todayIso,ui.periodMode).start;
+  const startDate=fromDate(first);
+  const future=[];
+  const recurringHorizon=localDate(shiftDate(startDate,7*12-1));
+  let boundedRecurrence=false;
+  for(const e of events()){
+    if(e.domain!=="work"||!fromDate(e.date))continue;
+    if(e.repeat!=="weekly"){
+      if(e.date>=first)future.push({event:e,date:e.date});
+      continue;
+    }
+    if(!e.weekdays?.length)continue;
+    // Open-ended repeating shifts cannot all be displayed. Include the
+    // next twelve pay/work weeks, alongside every dated one-off future shift.
+    const firstOccurrence=fromDate(e.date>first?e.date:first);
+    const lastOccurrence=fromDate(e.until&&e.until<recurringHorizon?e.until:recurringHorizon);
+    if(!firstOccurrence||!lastOccurrence)continue;
+    if(!e.until||e.until>recurringHorizon)boundedRecurrence=true;
+    for(let day=firstOccurrence;day<=lastOccurrence;day=shiftDate(day,1)){
+      const date=localDate(day);
+      if(visibleOnDate(e,date))future.push({event:e,date});
+    }
+  }
+  future.sort((a,b)=>a.date.localeCompare(b.date)||String(a.event.startTime||"").localeCompare(String(b.event.startTime||"")));
+  const lastShift=future.length?future[future.length-1].date:first;
+  // Include every intervening full week so the grid remains chronological.
+  const finalWeek=timekeeping.period(lastShift,ui.periodMode);
+  const last=finalWeek.end;
+  const numberOfDays=Math.round((fromDate(last)-startDate)/86400000)+1;
+  const days=Array.from({length:numberOfDays},(_,i)=>localDate(shiftDate(startDate,i)));
+  const shiftsByDay=new Map();
+  for(const occurrence of future){
+    if(!shiftsByDay.has(occurrence.date))shiftsByDay.set(occurrence.date,0);
+    shiftsByDay.set(occurrence.date,shiftsByDay.get(occurrence.date)+1);
+  }
+  const labels=days.slice(0,7).map(date=>'<span>'+DAYS[fromDate(date).getDay()].charAt(0)+'</span>').join("");
+  const cells=days.map(date=>{
+    const count=shiftsByDay.get(date)||0,d=fromDate(date),selected=date===todayIso;
+    const shiftedMonth=d.getDate()===1&&date!==first;
+    return '<button class="schedule-date'+(selected?' selected':'')+'" data-action="schedule-select" data-date="'+date+'" aria-label="'+esc(fullDate(date))+', '+count+' shift'+(count===1?'':'s')+'">'+
+      '<span>'+d.getDate()+'</span>'+(count?'<span class="schedule-dots"><i class="work"></i></span>':'')+
+      (shiftedMonth?'<small class="schedule-month-boundary">'+d.toLocaleDateString(undefined,{month:"short"})+'</small>':'')+'</button>';
+  }).join("");
+  const range=labelDate(first)+' – '+labelDate(last);
+  const calendar='<div class="schedule-calendar schedule-scheduled-calendar">'+
+    '<div class="schedule-scheduled-title"><strong>'+esc(range)+'</strong><span>'+Math.ceil(days.length/7)+' week'+(days.length===7?'':'s')+'</span></div>'+
+    '<div class="schedule-cal-head">'+labels+'</div><div class="schedule-cal-grid scheduled">'+cells+'</div></div>';
+  const shiftList='<div class="schedule-compact-list">'+future.map(({event,date})=>workShiftRow(event,date)).join("")+'</div>';
+  const empty='<div class="empty"><strong>No shifts saved for the current week or later</strong><p>Import a schedule or add a work shift.</p></div>';
+  return '<section class="schedule-scheduled-view"><div class="section-head"><h2>Scheduled</h2><span class="muted">'+future.length+' shift'+(future.length===1?'':'s')+'</span></div>'+
+    periodSelector()+calendar+
+    '<div class="schedule-scheduled-agenda"><div class="section-head"><h2>Shifts</h2><span class="muted">'+future.length+' scheduled</span></div>'+
+    (future.length?shiftList:empty)+'</div>'+
+    (boundedRecurrence?'<p class="schedule-hint">Recurring shifts are shown for the next 12 weeks.</p>':'')+
+    '</section>';
  }
 function homeWorkShifts(){
  const now=new Date(),todayIso=localDate(now),list=[];
