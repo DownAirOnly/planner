@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 16;
+  const APP_VERSION = 17;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -207,14 +207,61 @@
   }
   function showSheet(content){overlay.innerHTML='<div class="overlay" data-action="backdrop"><div class="sheet" role="dialog" aria-modal="true" aria-label="Command editor">'+content+'</div></div>';document.body.style.overflow="hidden";}
   function closeSheet(){overlay.innerHTML="";document.body.style.overflow="";if(window.__commandUpdatePending){window.__commandUpdatePending=false;window.location.reload();}}
+
+  function accountContent(){
+    const c=window.CommandCloud;
+    if(!c||c.status==="initializing")return '<p>Loading account services…</p>';
+    if(!c.configured)return '<p>Firebase is not connected yet. Your local data is unchanged. Configure the dedicated Command Firebase project to enable Google sign-in.</p>';
+    if(c.status==="error")return '<p>Account unavailable: '+escapeHtml(c.error)+'</p>';
+    if(!c.ready)return '<p>Checking sign-in…</p>';
+    if(!c.user)return '<p>Sign in with Google to make optional cloud backups. Your local data will not be replaced.</p><button class="button" data-action="cloud-signin">Sign in with Google</button>';
+    const name=c.user.displayName||c.user.email;
+    return '<p>Signed in as <strong>'+escapeHtml(name)+'</strong></p>'+
+      '<p>Cloud backup is manual for now. Signing in never changes your saved data.</p>'+
+      '<div class="action-row"><button class="button" data-action="cloud-save">Save cloud backup</button><button class="button secondary" data-action="cloud-restore">Restore cloud backup</button><button class="button quiet" data-action="cloud-signout">Sign out</button></div>';
+  }
+  window.addEventListener("command-cloud-changed",()=>{
+    const node=document.querySelector("#command-account-content");
+    if(node)node.innerHTML=accountContent();
+  });
+  async function handleCloudAction(action){
+    const cloud=window.CommandCloud;
+    if(!cloud?.ready){alert("Google account is not configured or ready.");return;}
+    try{
+      if(action==="cloud-signin"){await cloud.signIn();settings();return;}
+      if(!cloud.user){alert("Sign in first.");return;}
+      if(action==="cloud-signout"){await cloud.signOut();settings();return;}
+      if(action==="cloud-save"){
+        const remote=await cloud.getBackup();
+        if(remote&&!hasContent(data)){alert("An empty local app cannot overwrite an existing cloud backup.");return;}
+        const counts=data.projects.length+" projects, "+data.tasks.length+" tasks, "+data.ideas.length+" ideas, "+data.events.length+" calendar events";
+        const word=remote?"REPLACE":"UPLOAD";
+        if(prompt((remote?"Replace the existing cloud backup?":"Make a new cloud backup?")+" This device contains "+counts+". Type "+word+" to continue.")!==word)return;
+        await cloud.saveBackup(data,remote?.revision??null);
+        toast("Cloud backup saved");settings();return;
+      }
+      if(action==="cloud-restore"){
+        const remote=await cloud.getBackup();
+        if(!remote){alert("No backup exists for this Google account.");return;}
+        const recovered=normalize(remote.backup);
+        const counts=recovered.projects.length+" projects, "+recovered.tasks.length+" tasks, "+recovered.ideas.length+" ideas, "+recovered.events.length+" calendar events";
+        if(prompt("Restore cloud data ("+counts+") onto this device? The current local data will be replaced, after preserving a recovery copy. Type RESTORE.")!=="RESTORE")return;
+        const previous=localStorage.getItem(KEY);
+        if(previous&&hasContent(data))localStorage.setItem("command.recovery.beforeCloudRestore",previous);
+        localStorage.setItem(KEY,JSON.stringify(recovered));
+        data=recovered;closeSheet();switchTab("home");toast("Cloud backup restored");return;
+      }
+    }catch(error){alert("Google account operation failed: "+(error?.message||String(error)));}
+  }
   function settings(){
     showSheet('<div class="sheet-head"><h2 class="sheet-title">Settings & backup</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+icon("x")+'</button></div>'+
-      '<div class="settings-group"><h3>Storage</h3><p>Command currently saves locally. Google sign-in and synchronization are planned but are not active yet. Export a backup before clearing app data.</p></div>'+
+      '<div class="settings-group"><h3>Google account</h3><div id="command-account-content">'+accountContent()+'</div></div>'+ 
+      '<div class="settings-group"><h3>Storage</h3><p>Command saves locally. Google sign-in enables explicit cloud backups when configured. Automatic synchronization is not active.</p></div>'+
       '<div class="settings-group"><h3>Back up your data</h3><p>Export a JSON file before switching phones, clearing browser data, or making significant changes.</p><button class="button" data-action="export">'+icon("download")+' Export backup</button><button class="button secondary" data-action="import">'+icon("upload")+' Import backup</button></div>'+
       '<div class="settings-group"><h3>Clear local data</h3><p>Clears every local project, task, idea, and shift. No sample content will be restored. If records exist, a local recovery copy is saved first. Cloud data is not touched.</p><button class="button danger" data-action="reset">'+icon("trash")+' Clear all local data</button></div>'+
       (localStorage.getItem(RECOVERY_KEY)?'<div class="settings-group"><h3>Recovery</h3><p>Restore the saved copy from before a previous clear. This replaces the current data on this device.</p><button class="button secondary" data-action="restore-local-recovery">Restore last cleared data</button></div>':'')+
       '<details class="settings-group"><summary>Display diagnostics</summary><p>For troubleshooting the iPhone Home Screen layout.</p><button class="button secondary" data-action="display-diagnostics">Copy display details</button></details>'+ 
-      '<div class="settings-group"><h3>About</h3><p>Command v'+APP_VERSION+' · Local storage with backup export; account sync not configured.</p></div>');
+      '<div class="settings-group"><h3>About</h3><p>Command v'+APP_VERSION+' · Local storage, Google sign-in and manual backup when connected.</p></div>');
   }
   function exportData(){
     const text=JSON.stringify({...data,exportedAt:new Date().toISOString()},null,2);
@@ -232,6 +279,7 @@
     const button=event.target.closest("[data-action]");if(!button)return;
     const action=button.dataset.action,id=button.dataset.id,kind=button.dataset.kind;
     if(schedule.handleAction(button))return;
+    if(["cloud-signin","cloud-signout","cloud-save","cloud-restore"].includes(action)){void handleCloudAction(action);return;}
     if(action==='display-diagnostics'){
       const bar=document.querySelector(".tabbar"),shell=document.querySelector(".app-shell");
       const rect=bar?.getBoundingClientRect();
