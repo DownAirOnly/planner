@@ -223,6 +223,7 @@
    const current=record?.report;
    const same=record?.sha256===pending.sha256;
    const diff=pending.diff||compareLedgers(pending.finance,record?.data);
+   const potentiallyIncomplete=pending.report.transactions===0;
    return '<section class="money-preview" role="status"><div class="section-head"><h2>Import verification preview</h2><button data-money-action="cancel-preview">Cancel</button></div>'+
      '<p><strong>'+e(pending.filename)+'</strong> · '+e(pending.kind)+(same?' · Same as saved copy':'')+'</p>'+
      '<div class="money-stats">'+card("Transactions",String(r.transactions),current?"Current "+current.transactions:"")+
@@ -236,6 +237,7 @@
      '<div><span>Dates</span><strong>'+e(r.minDate)+' – '+e(r.maxDate)+'</strong></div>'+
      '<div><span>Bank / receipt records</span><strong>'+r.bankTransactions+' / '+r.receipts+'</strong></div>'+
      '<div><span>Rules / pending bank rows</span><strong>'+r.rules+' / '+r.unresolvedBank+'</strong></div></div>'+
+     (potentiallyIncomplete?'<p class="money-warning">This export has zero transactions. It may only contain settings, not full financial history.</p>':'')+
      '<p class="money-warning">Everyday is NOT changed. Importing makes an exact local copy; it does not merge entries, and it does not upload to Firebase. '+(record?'The previous Command finance copy is saved for recovery.':'')+'</p>'+
      (same?'<p class="money-ok">This file is already imported.</p>':
        (diff.missing?'<p>Choose a newer full export from Everyday.</p>':
@@ -368,9 +370,11 @@
      if(action==="month"){month=button.value;page=0;dispatch();}
      if(action==="export-finance"&&record)download("command-finances-"+day()+".json",{format:FORMAT,section:"finances",data:record.data});
      if(action==="export-audit"&&record){
+       const idHash=await sha(record.data.transactions.map(t=>t.id).sort());
        download("command-money-audit-"+day()+".json",{
          format:"command-money-audit-v1",sourceFile:record.sourceFilename,importedAt:record.importedAt,
-         sha256:record.sha256,locallyVerified:verified,report:record.report,
+         sha256:record.sha256,transaction_id_sha256:idHash,
+         locallyVerified:verified,report:record.report,
          cloudVerified:cloudRecord()?{verifiedAt:cloudRecord().verifiedAt,revision:cloudRecord().revision}:null
        });
      }
