@@ -336,6 +336,11 @@ function eventForm(item={}){
   const draft=ui.workingImport;if(!draft)return;
   const found=sortedDraft(draft.rows), target=document.querySelector("#schedule-import-results");if(!target)return;
   const existing=new Set(events().map(e=>[e.domain,e.date,e.startTime,e.endTime].join("|")));
+  if(draft.openReviewId===undefined){
+    const notDuplicate=row=>!existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
+    const needsAttention=row=>!row.reviewed&&(row.estimatedDate||row.dateConfidence==="low"||!row.startTime||!row.endTime||row._include===false);
+    draft.openReviewId=(found.find(row=>notDuplicate(row)&&needsAttention(row))||found.find(notDuplicate)||found[0])?.id||null;
+  }
   target.innerHTML=(found.length?'<div class="section-head schedule-review-heading"><h2>Proposed schedule</h2><span class="muted">'+found.length+' shift'+(found.length===1?"":"s")+'</span></div>'+
     '<p class="schedule-hint">Check the shifts, then save. Tap Edit to change anything.</p>'+
     '<form id="schedule-import-form"><div class="schedule-import-preview">'+found.map((row,i)=>{
@@ -344,6 +349,7 @@ function eventForm(item={}){
       const level=typeof confidence==="string"?confidence:"medium";
       const confText=row.reviewed?"Reviewed":(level==="high"?"High confidence":level==="medium"?"Medium confidence":"Low confidence");
       const needsEdit=!row.startTime||!row.endTime;
+      const opened=row.id===draft.openReviewId;
       const detail=row.confidenceReason||(!row.startTime||!row.endTime?"Times could not be read":"Date and time inferred");
       const status=(!row.startTime||!row.endTime)?"Times need review":fmtTime(row);
       const totals=timekeeping.shiftTotals(row);
@@ -358,9 +364,9 @@ function eventForm(item={}){
             '<small class="schedule-work-summary'+zoneStyle(row)+'">'+esc(row.domain==="work"?workMeta(row):displayLocation(row))+'</small>'+
             '<small class="schedule-confidence confidence-'+(row.reviewed?"reviewed":level)+'" title="'+esc(detail)+'">'+confText+(row.reviewed||level==="high"?"":" · "+esc(detail))+'</small>'+
           '</span></label>'+
-          '<button type="button" class="schedule-row-edit" data-action="schedule-review-toggle" data-index="'+i+'" aria-expanded="'+(needsEdit?"true":"false")+'">Edit</button></div>'+
+          '<button type="button" class="schedule-row-edit" data-action="schedule-review-toggle" data-index="'+i+'" aria-expanded="'+(opened?"true":"false")+'">'+(opened?"Close":"Edit")+'</button></div>'+
         (duplicate?'<div class="schedule-duplicate-note">Already saved — unchecked</div>':"")+
-        '<div class="schedule-row-editor" id="schedule-review-'+i+'" '+(needsEdit?"":"hidden")+'>'+
+        '<div class="schedule-row-editor" id="schedule-review-'+i+'" '+(opened?"":"hidden")+'>'+
           '<div class="field"><label>Title</label><input name="title-'+i+'" value="'+esc(row.title)+'"></div>'+
           '<div class="form-grid"><div class="field"><label>Date</label><input type="date" name="date-'+i+'" value="'+esc(row.date)+'"></div>'+
           '<div class="field"><label>Start</label><input type="time" name="start-'+i+'" value="'+esc(row.startTime)+'"></div></div>'+
@@ -394,19 +400,25 @@ function eventForm(item={}){
   }));
  }
  function toggleRow(index,forceClose=false){
-  const fields=document.querySelector("#schedule-review-"+index);
-  const button=document.querySelector('[data-action="schedule-review-toggle"][data-index="'+index+'"]');
-  if(!fields)return;
+  const draft=ui.workingImport,original=draft?.rows[index];
+  if(!draft||!original)return;
+  preserveReviewEdits();
+  const row=draft.rows[index];
   if(forceClose){
-    preserveReviewEdits();
-    const row=ui.workingImport?.rows[index];
-    if(row){row.reviewed=true;row.estimatedDate=false;row.assignmentEstimated=false;row.locationEstimated=false;}
-    sortedDraft(ui.workingImport.rows);
-    importPreview();
-    return;
+    row.reviewed=true;
+    row.estimatedDate=false;
+    row.assignmentEstimated=false;
+    row.locationEstimated=false;
+    const next=draft.rows.find((e,i)=>i!==index&&!e.reviewed&&
+      (e.estimatedDate||e.dateConfidence==="low"||!e.startTime||!e.endTime||e._include===false));
+    draft.openReviewId=next?.id||null;
+  }else draft.openReviewId=draft.openReviewId===row.id?null:row.id;
+  sortedDraft(draft.rows);
+  importPreview();
+  if(draft.openReviewId){
+    const i=draft.rows.findIndex(e=>e.id===draft.openReviewId);
+    document.querySelector("#schedule-review-"+i)?.scrollIntoView({block:"nearest",behavior:"instant"});
   }
-  fields.hidden=!fields.hidden;
-  if(button){button.textContent=fields.hidden?"Edit":"Close";button.setAttribute("aria-expanded",String(!fields.hidden));}
  }
  function loadTesseract(){
   if(window.Tesseract&&typeof window.Tesseract.createWorker==="function")return Promise.resolve();
@@ -487,8 +499,11 @@ function eventForm(item={}){
     const plain=parseImportedText(draft.raw,draft.domain,yr,mo);
     draft.rows=window.CommandImportParser.proposeClippedPrevious(draft.raw,
       window.CommandImportParser.reconcileRows([...plain,...draft.ocrRows],draft.domain,usualWorkdays()),draft.domain);
+    draft.openReviewId=undefined;
     sortedDraft(draft.rows);
     importPreview();
+    const openIndex=draft.rows.findIndex(e=>e.id===draft.openReviewId);
+    if(openIndex>=0)document.querySelector("#schedule-review-"+openIndex)?.scrollIntoView({block:"nearest",behavior:"instant"});
     status.textContent=draft.rows.length+" proposed shift"+(draft.rows.length===1?"":"s")+" ready to review.";
    }
   }catch(err){status.textContent=err.message||"Could not read the image. Try Live Text in Photos.";}
@@ -519,8 +534,9 @@ function eventForm(item={}){
      const date=ui.selected.startsWith(month)?ui.selected:month+"-01";
      preserveReviewEdits();
      draft.rows.push({id:uid(),domain:draft.domain,title:draft.domain==="work"?"Work shift":draft.domain==="school"?"Class":"Event",date,startTime:"",endTime:"",allDay:false,location:"",notes:"",breakMinutes:null,repeat:"none",weekdays:[],until:""});
+     draft.openReviewId=draft.rows[draft.rows.length-1].id;
      importPreview();
-      const newIndex=draft.rows.length-1;
+      const newIndex=draft.rows.findIndex(e=>e.id===draft.openReviewId);
       const target=document.querySelector("#schedule-review-"+newIndex);
       if(target)target.scrollIntoView({block:"nearest",behavior:"smooth"});
     }
@@ -532,6 +548,7 @@ function eventForm(item={}){
    const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
     draft.rows=window.CommandImportParser.reconcileRows(parseImportedText(draft.raw,draft.domain,yr,mo),draft.domain,usualWorkdays());
     draft.ocrRows=[];
+    draft.openReviewId=undefined;
    importPreview();
   }
   return true;

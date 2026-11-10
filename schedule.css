@@ -272,3 +272,30 @@
  .schedule-view-actions .button{padding:9px 7px;font-size:11px}
 }
 @media(max-width:365px){.schedule-view-actions .button{font-size:0;min-width:36px;display:grid;place-items:center;gap:0}.schedule-view-actions .icon{width:17px;height:17px}}
+
+/* v19: prevent iPhone review editor collisions without changing Schedule screen cards. */
+.schedule-proposed-row{min-width:0}
+.schedule-proposed-top{min-width:0;flex-wrap:wrap;align-items:flex-start;gap:8px}
+.schedule-proposed-check{flex:1 1 175px;min-width:0}
+.schedule-proposed-main{flex:1;min-width:0;overflow-wrap:anywhere}
+.schedule-proposed-main>span,.schedule-proposed-main small{max-width:100%;overflow-wrap:anywhere}
+.schedule-proposed-top .schedule-row-edit{margin-left:auto;flex:none}
+.schedule-row-editor,.schedule-row-editor .work-fields,.schedule-row-editor .form-grid,.schedule-row-editor .field{min-width:0;max-width:100%}
+.schedule-row-editor .form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.schedule-row-editor input,.schedule-row-editor select,.schedule-row-editor textarea{display:block;min-width:0;max-width:100%;box-sizing:border-box}
+.schedule-row-editor input[type="date"],.schedule-row-editor input[type="time"]{width:100%;min-width:0;max-width:100%;-webkit-appearance:none;appearance:none}
+@media(max-width:480px){
+ .schedule-row-editor .form-grid{grid-template-columns:minmax(0,1fr);gap:9px}
+ .schedule-proposed-check{flex-basis:190px}
+ .schedule-proposed-row{padding:11px 10px}
+ .schedule-row-editor{overflow:clip}
+}
+.schedule-scheduled-view{display:grid;gap:12px;margin-top:9px}
+.schedule-scheduled-view>.section-head{margin-bottom:0}
+.schedule-scheduled-week{display:grid;gap:6px;min-width:0}
+.schedule-scheduled-calendar{padding:11px 9px}
+.schedule-scheduled-title{display:flex;align-items:center;justify-content:space-between;gap:9px;margin-bottom:7px;flex-wrap:wrap}
+.schedule-scheduled-title strong{font-size:13px}
+.schedule-scheduled-title span{font-size:11px;color:var(--muted)}
+.schedule-scheduled-week .schedule-compact-list{margin-top:0}
+.schedule-cal-grid.week .schedule-date{height:45px}

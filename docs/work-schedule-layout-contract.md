@@ -23,3 +23,14 @@ Location parsing: WWoHP / Hogsmeade means **Hogsmeade Village**; Area Support is
 ## iPhone standalone viewport
 
 As of v14, do not reintroduce `viewport-fit=cover` or a `100dvh` fixed-height shell without a physical iPhone cold-launch test. They caused an extra bottom strip measuring about 62 CSS pixels. Preserve the in-flow nav, local data, and unmodified approved Work Schedule visual hierarchy.
+
+## v19 schedule and import updates
+
+- Automatic breaks: at least **6 hours = 15 minutes** and at least **8 hours = 30 minutes**. Manual override remains available.
+- Work views are **Week / Scheduled / Month**. Scheduled shows every week containing saved nonrecurring shifts as a separate calendar slice with chronological shift rows. Weeks without shifts do not appear. An indefinitely recurring shift is represented within a bounded one-year lookback/lookahead; finite individual shifts are not excluded by date.
+- The Pay Week / Work Week selector regroups the Scheduled slices Sunday–Saturday or Friday–Thursday. Month stays Sunday-first.
+- Shift row duration is the **full scheduled time**; the scheduled/breaks/adjusted summary remains separate.
+- During import review, the first shift needing attention opens by default; otherwise the first new shift. Only one editor opens at a time, and date/time fields stack on narrow devices.
+- Location editing shows **Island** when the park is IOA; otherwise **Area**, including when the park is changed during review.
+
+These are specific revisions to the v10-approved layout. Preserve the rest.
