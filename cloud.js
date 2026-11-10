@@ -1,4 +1,4 @@
-import {firebaseConfig} from "./firebase-config.js";
+import {firebaseConfig} from "./firebase-config.js?v=18";
 
 const cloud={
   configured:!!(firebaseConfig&&firebaseConfig.apiKey&&firebaseConfig.authDomain&&firebaseConfig.projectId&&firebaseConfig.appId),
