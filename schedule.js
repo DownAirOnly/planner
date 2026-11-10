@@ -165,19 +165,18 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
   (count?'<div class="schedule-compact-list">'+rows+'</div>':'<div class="empty"><strong>No shifts saved here</strong><p>Import or add your work schedule.</p></div>')+'</section>';
 }
 function homeWorkShifts(){
- const now=new Date(),minute=now.getHours()*60+now.getMinutes(),list=[];
+ const now=new Date(),todayIso=localDate(now),list=[];
+ // A shift remains on Home for its entire start date, including after clock-out.
+ // Overnight shifts follow the date they started; no fabricated end date.
  for(let offset=0;offset<366&&list.length<3;offset++){
   const date=localDate(shiftDate(now,offset));
   for(const e of dateEvents(date,"work")){
-   if(offset===0&&e.startTime&&!e.allDay){
-    const [h,m]=e.startTime.split(":").map(Number),start=h*60+m,duration=timekeeping.scheduledMinutes(e);
-    if((duration!==null&&minute>=start+duration)||(duration===null&&minute>start))continue;
-   }
-   list.push({...e,occurrenceDate:date});if(list.length===3)break;
+   list.push({...e,occurrenceDate:date});
+   if(list.length===3)break;
   }
  }
  return '<section class="section schedule-next-shifts"><div class="section-head"><h2>Next shifts</h2><button class="subtle-link" data-action="schedule-jump" data-domain="work">Schedule</button></div>'+
- (list.length?'<div class="schedule-next-list">'+list.map(e=>'<button class="schedule-next-row'+zoneStyle(e)+'" data-action="schedule-jump" data-domain="work" data-date="'+esc(e.occurrenceDate)+'"><span class="schedule-next-date">'+esc(labelDate(e.occurrenceDate))+'</span><strong class="schedule-next-time">'+esc(fmtTime(e))+'</strong><small class="schedule-next-meta">'+esc(workMeta(e)||"Work")+'</small>'+ic("chevron-right","tiny")+'</button>').join("")+'</div>':'<div class="schedule-next-empty">No upcoming work shifts saved.</div>')+'</section>';
+ (list.length?'<div class="schedule-next-list">'+list.map(e=>'<button class="schedule-next-row'+zoneStyle(e)+'" data-action="schedule-jump" data-domain="work" data-date="'+esc(e.occurrenceDate)+'"><span class="schedule-next-date">'+(e.occurrenceDate===todayIso?'Today':esc(labelDate(e.occurrenceDate)))+'</span><strong class="schedule-next-time">'+esc(fmtTime(e))+'</strong><small class="schedule-next-meta">'+esc(workMeta(e)||"Work")+'</small>'+ic("chevron-right","tiny")+'</button>').join("")+'</div>':'<div class="schedule-next-empty">No upcoming work shifts saved.</div>')+'</section>';
 }
 function nextEvent(domain){
    const now=new Date(),day0=localDate(now);
@@ -185,11 +184,11 @@ function nextEvent(domain){
    return null;
  }
  function homeSummary(){
-   const domains=["school","personal"];
-   return '<section class="section"><div class="section-head"><h2>Coming up</h2><button class="subtle-link" data-action="schedule-jump" data-domain="work">Calendar '+ic("arrow","tiny")+'</button></div><div class="schedule-home-grid">'+domains.map(domain=>{
-    const next=nextEvent(domain),heading=domain==="work"?"Next shift":domain==="school"?"Next class":"Next plan";
-    return '<button class="schedule-home-item" data-action="schedule-jump" data-domain="'+domain+'"><span class="schedule-tag '+domain+'">'+(domain==="work"?"Work":domain==="school"?"School":"Personal")+'</span><span class="schedule-home-heading">'+heading+'</span><span class="schedule-home-primary">'+(next?esc(labelDate(next.occurrenceDate)):"Nothing scheduled")+'</span><span class="schedule-home-secondary">'+(next?esc(fmtTime(next)+(workMeta(next)?" · "+workMeta(next):"")):(domain==="work"?"Add your work schedule":domain==="school"?"Add your class schedule":"Add a personal plan"))+'</span></button>';
-   }).join("")+'</div></section>';
+   const upcoming=["school","personal"].map(domain=>({domain,event:nextEvent(domain)})).filter(item=>item.event);
+   if(!upcoming.length)return "";
+   return '<section class="section"><div class="section-head"><h2>Coming up</h2><button class="subtle-link" data-action="schedule-jump" data-domain="'+upcoming[0].domain+'">Calendar '+ic("arrow","tiny")+'</button></div><div class="schedule-home-grid">'+upcoming.map(({domain,event})=>
+    '<button class="schedule-home-item" data-action="schedule-jump" data-domain="'+domain+'"><span class="schedule-tag '+domain+'">'+(domain==="school"?"School":"Personal")+'</span><span class="schedule-home-heading">'+(domain==="school"?"Next class":"Next plan")+'</span><span class="schedule-home-primary">'+esc(labelDate(event.occurrenceDate))+'</span><span class="schedule-home-secondary">'+esc(fmtTime(event)+(event.location?" · "+event.location:""))+'</span></button>'
+   ).join("")+'</div></section>';
  }
  const heading=()=>{
    const date=fromDate(ui.selected);

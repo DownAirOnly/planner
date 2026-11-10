@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 14;
+  const APP_VERSION = 15;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -103,13 +103,25 @@
   }
   function focusControls(t,index){return '<div class="focus-controls"><button class="button quiet" data-action="unpin" data-id="'+escapeHtml(t.id)+'">Unpin</button>'+(index>0?'<button class="button quiet" data-action="move-pin" data-id="'+escapeHtml(t.id)+'">Move up</button>':'')+'</div>';}
   function home(){
-    const pinned=data.focus.map(id=>data.tasks.find(t=>t.id===id)).filter(t=>t&&t.status!=='done');
-    const suggested=data.tasks.filter(t=>!t.needsReview&&['open','in_progress'].includes(t.status)&&!data.focus.includes(t.id)&&!data.dismissed.includes(t.id)&&(!t.projectId||data.projects.some(p=>p.id===t.projectId&&!p.needsReview&&p.status==='active'&&!p.blocker))).sort(taskSort).slice(0,3);
-    const moving=data.projects.filter(p=>!p.needsReview&&['active','waiting','blocked'].includes(p.status)).slice(0,3);
-    return '<div class="page-heading page-heading-actions-only"><button class="button" data-action="quick-add">'+icon('plus')+' Capture</button></div>'+schedule.homeWorkShifts()+
-      '<section class="section"><div class="section-head"><h2>Up next</h2><button class="subtle-link" data-action="tab" data-view="tasks">Choose items</button></div>'+ (pinned.length?pinned.map((t,i)=>'<div class="focus-item">'+taskRow(t)+focusControls(t,i)+'</div>').join(''):empty('Your priorities, in your order','Pin an item from an area or accept a suggestion.'))+'</section>'+
-      (suggested.length?'<section class="section"><div class="section-head"><h2>Suggestions</h2><span class="muted">Due dates, then priority</span></div>'+suggested.map(t=>'<div class="focus-item">'+taskRow(t)+'<div class="focus-controls"><button class="button secondary" data-action="pin" data-id="'+escapeHtml(t.id)+'">Add to Up next</button><button class="button quiet" data-action="dismiss" data-id="'+escapeHtml(t.id)+'">Dismiss</button></div></div>').join('')+'</section>':'')+
-      (moving.length?'<section class="section"><div class="section-head"><h2>Moving forward</h2></div><div class="project-summary-list">'+moving.map(p=>'<button class="project-summary-row" data-action="project-detail" data-id="'+escapeHtml(p.id)+'"><span class="project-summary-name">'+escapeHtml(p.title)+'</span><span class="project-summary-next">'+(p.blocker?'<span class="chip blocked">Blocker</span>':escapeHtml(p.next||'Choose a next step'))+'</span>'+icon('chevron-right','tiny')+'</button>').join('')+'</div></section>':'')+
+    const open=t=>t.status!=="done";
+    const pinned=data.focus.map(id=>data.tasks.find(t=>t.id===id)).filter(t=>t&&open(t));
+    const ready=data.tasks.filter(t=>open(t)&&!t.needsReview&&['open','in_progress'].includes(t.status)&&!data.focus.includes(t.id)&&(!t.projectId||data.projects.some(p=>p.id===t.projectId&&p.status==='active'&&!p.needsReview&&!p.blocker))).sort(taskSort).slice(0,3);
+    const review=data.tasks.filter(t=>open(t)&&t.needsReview).sort(taskSort).slice(0,3);
+    const projects=data.projects.filter(p=>p.status!=="done"&&p.status!=="parked").sort((a,b)=>
+      Number(!!a.needsReview)-Number(!!b.needsReview)||Number(a.status!=="active")-Number(b.status!=="active")
+    ).slice(0,3);
+    const focus=pinned.length?pinned:ready;
+    const focusSection=focus.length?
+      '<section class="section"><div class="section-head"><h2>'+(pinned.length?'Up next':'Tasks')+'</h2><button class="subtle-link" data-action="tab" data-view="tasks">All items</button></div>'+
+      focus.map((t,i)=>'<div class="focus-item">'+taskRow(t)+(pinned.length?focusControls(t,i):'')+'</div>').join('')+'</section>':
+      (review.length?
+      '<section class="section"><div class="section-head"><h2>Needs review</h2><button class="subtle-link" data-action="tab" data-view="inbox">Inbox</button></div>'+
+      review.map(t=>'<div class="focus-item">'+taskRow(t)+'</div>').join('')+'</section>':'');
+    const projectSection=projects.length?
+      '<section class="section"><div class="section-head"><h2>Projects</h2><button class="subtle-link" data-action="tab" data-view="areas">Areas</button></div><div class="project-summary-list">'+
+      projects.map(p=>'<button class="project-summary-row" data-action="project-detail" data-id="'+escapeHtml(p.id)+'"><span class="project-summary-name">'+escapeHtml(p.title)+'</span><span class="project-summary-next">'+(p.needsReview?'<span class="chip waiting">Review</span>':p.blocker?'<span class="chip blocked">Blocker</span>':escapeHtml(p.next||'Open project'))+'</span>'+icon('chevron-right','tiny')+'</button>').join('')+'</div></section>':'';
+    return '<div class="page-heading page-heading-actions-only"><button class="button" data-action="quick-add">'+icon('plus')+' Capture</button></div>'+
+      schedule.homeWorkShifts()+focusSection+projectSection+
       '<section class="section coming-up">'+schedule.homeSummary()+data.tasks.filter(t=>t.kind==='followup'&&!t.needsReview&&t.status!=='done'&&t.dueDate&&t.dueDate<=today()).sort(taskSort).slice(0,3).map(taskRow).join('')+'</section>';
   }
   function areas(){
