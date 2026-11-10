@@ -64,3 +64,35 @@ html,body{background:var(--bg)}
   }
   html.command-standalone .tabbar::after{content:none}
 }
+
+/* v20 — Home is a personal dashboard, not a work-only schedule. */
+.home-lead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin:7px 0 16px}
+.home-lead-text{min-width:0}
+.home-date{display:block;color:var(--muted);font-size:12px;font-weight:670;letter-spacing:.015em;margin-bottom:4px}
+.home-lead h1{font-size:31px;letter-spacing:-1.1px;line-height:1.15;font-weight:790;margin:0}
+.home-capture{flex:none}
+.home-quick-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:0 0 15px}
+.home-quick-action{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0;min-height:60px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:15px;font-size:13px;font-weight:720}
+.home-quick-action .icon{width:18px;height:18px;color:var(--mint)}
+.home-quick-action:active,.home-area-link:active{background:var(--panel2)}
+.home-start-card{border:1px dashed #4c6561;border-radius:15px;padding:15px 17px;margin:0 0 5px;background:#172325}
+.home-start-card strong{display:block;font-size:14px}
+.home-start-card p{margin:5px 0 0;color:var(--muted);font-size:12px;line-height:1.5}
+.home-content-section{margin-top:20px}
+.home-content-section .section-head{margin-bottom:9px}
+.home-area-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.home-area-link{position:relative;min-width:0;display:flex;flex-direction:column;align-items:flex-start;text-align:left;justify-content:center;gap:5px;min-height:79px;padding:14px 32px 13px 14px;border:1px solid var(--line);background:var(--panel);border-radius:15px;color:var(--text)}
+.home-area-link strong{font-size:13px;line-height:1.28}
+.home-area-link span{font-size:11px;color:var(--muted)}
+.home-area-link .icon{position:absolute;right:12px;top:calc(50% - 7px);width:15px;height:15px;color:var(--muted)}
+.home-area-school{border-top:2px solid #b8a7e0}
+.home-area-apps{border-top:2px solid #83b0e0}
+.home-area-health{border-top:2px solid #90cfb2}
+.home-area-personal{border-top:2px solid #d5b990}
+.home-areas+.schedule-next-shifts{margin-top:24px}
+.home-lead+.home-quick-actions+.home-start-card+.home-areas+.schedule-next-shifts{margin-top:24px}
+@media(max-width:400px){
+ .home-quick-action{font-size:12px;gap:6px;min-height:56px}
+ .home-quick-action .icon{width:16px;height:16px}
+ .home-area-link{padding-left:12px;padding-right:27px}
+}

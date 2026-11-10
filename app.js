@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 19;
+  const APP_VERSION = 20;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -81,26 +81,45 @@
   }
   function focusControls(t,index){return '<div class="focus-controls"><button class="button quiet" data-action="unpin" data-id="'+escapeHtml(t.id)+'">Unpin</button>'+(index>0?'<button class="button quiet" data-action="move-pin" data-id="'+escapeHtml(t.id)+'">Move up</button>':'')+'</div>';}
   function home(){
-    const open=t=>t.status!=="done";
-    const pinned=data.focus.map(id=>data.tasks.find(t=>t.id===id)).filter(t=>t&&open(t));
-    const ready=data.tasks.filter(t=>open(t)&&!t.needsReview&&['open','in_progress'].includes(t.status)&&!data.focus.includes(t.id)&&(!t.projectId||data.projects.some(p=>p.id===t.projectId&&p.status==='active'&&!p.needsReview&&!p.blocker))).sort(taskSort).slice(0,3);
-    const review=data.tasks.filter(t=>open(t)&&t.needsReview).sort(taskSort).slice(0,3);
-    const projects=data.projects.filter(p=>p.status!=="done"&&p.status!=="parked").sort((a,b)=>
+    const isOpen=t=>t.status!=="done";
+    const activeTasks=data.tasks.filter(isOpen);
+    const activeProjects=data.projects.filter(p=>p.status!=="done"&&p.status!=="parked");
+    const pinned=data.focus.map(id=>data.tasks.find(t=>t.id===id)).filter(t=>t&&isOpen(t));
+    const ready=activeTasks.filter(t=>!t.needsReview&&["open","in_progress"].includes(t.status)&&!data.focus.includes(t.id)&&(!t.projectId||data.projects.some(p=>p.id===t.projectId&&p.status==="active"&&!p.needsReview&&!p.blocker))).sort(taskSort).slice(0,3);
+    const review=activeTasks.filter(t=>t.needsReview).sort(taskSort).slice(0,3);
+    const projects=[...activeProjects].sort((a,b)=>
       Number(!!a.needsReview)-Number(!!b.needsReview)||Number(a.status!=="active")-Number(b.status!=="active")
     ).slice(0,3);
     const focus=pinned.length?pinned:ready;
+    const dayText=new Date().toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
+    const top='<div class="home-lead"><div class="home-lead-text"><span class="home-date">'+escapeHtml(dayText)+'</span><h1>Today</h1></div>'+
+      '<button class="button home-capture" data-action="quick-add">'+icon("plus")+' Capture</button></div>';
+    const quick='<div class="home-quick-actions" aria-label="Add to Command">'+
+      '<button class="home-quick-action" data-action="edit" data-kind="task">'+icon("check")+'<span>Task</span></button>'+
+      '<button class="home-quick-action" data-action="edit" data-kind="project">'+icon("folder")+'<span>Project</span></button>'+
+      '<button class="home-quick-action" data-action="home-add-plan">'+icon("calendar")+'<span>Plan</span></button></div>';
+    const noPersonalData=!data.tasks.length&&!data.projects.length&&!data.ideas.length;
+    const starting=noPersonalData?'<div class="home-start-card"><strong>Your list is empty</strong><p>Add something you actually want to track. Tasks and projects will appear here automatically.</p></div>':'';
     const focusSection=focus.length?
-      '<section class="section"><div class="section-head"><h2>'+(pinned.length?'Up next':'Tasks')+'</h2><button class="subtle-link" data-action="tab" data-view="tasks">All items</button></div>'+
-      focus.map((t,i)=>'<div class="focus-item">'+taskRow(t)+(pinned.length?focusControls(t,i):'')+'</div>').join('')+'</section>':
+      '<section class="section home-content-section"><div class="section-head"><h2>'+(pinned.length?"Up next":"Tasks")+'</h2><button class="subtle-link" data-action="tab" data-view="tasks">All items</button></div>'+
+      focus.map((t,i)=>'<div class="focus-item">'+taskRow(t)+(pinned.length?focusControls(t,i):"")+'</div>').join("")+'</section>':
       (review.length?
-      '<section class="section"><div class="section-head"><h2>Needs review</h2><button class="subtle-link" data-action="tab" data-view="inbox">Inbox</button></div>'+
-      review.map(t=>'<div class="focus-item">'+taskRow(t)+'</div>').join('')+'</section>':'');
+       '<section class="section home-content-section"><div class="section-head"><h2>Needs review</h2><button class="subtle-link" data-action="tab" data-view="inbox">Inbox</button></div>'+
+       review.map(t=>'<div class="focus-item">'+taskRow(t)+'</div>').join("")+'</section>':'');
     const projectSection=projects.length?
-      '<section class="section"><div class="section-head"><h2>Projects</h2><button class="subtle-link" data-action="tab" data-view="areas">Areas</button></div><div class="project-summary-list">'+
-      projects.map(p=>'<button class="project-summary-row" data-action="project-detail" data-id="'+escapeHtml(p.id)+'"><span class="project-summary-name">'+escapeHtml(p.title)+'</span><span class="project-summary-next">'+(p.needsReview?'<span class="chip waiting">Review</span>':p.blocker?'<span class="chip blocked">Blocker</span>':escapeHtml(p.next||'Open project'))+'</span>'+icon('chevron-right','tiny')+'</button>').join('')+'</div></section>':'';
-    return '<div class="page-heading page-heading-actions-only"><button class="button" data-action="quick-add">'+icon('plus')+' Capture</button></div>'+
-      schedule.homeWorkShifts()+focusSection+projectSection+
-      '<section class="section coming-up">'+schedule.homeSummary()+data.tasks.filter(t=>t.kind==='followup'&&!t.needsReview&&t.status!=='done'&&t.dueDate&&t.dueDate<=today()).sort(taskSort).slice(0,3).map(taskRow).join('')+'</section>';
+      '<section class="section home-content-section"><div class="section-head"><h2>Projects</h2><button class="subtle-link" data-action="tab" data-view="areas">All areas</button></div><div class="project-summary-list">'+
+      projects.map(p=>'<button class="project-summary-row" data-action="project-detail" data-id="'+escapeHtml(p.id)+'"><span class="project-summary-name">'+escapeHtml(p.title)+'</span><span class="project-summary-next">'+(p.needsReview?'<span class="chip waiting">Review</span>':p.blocker?'<span class="chip blocked">Blocker</span>':escapeHtml(p.next||"Open project"))+'</span>'+icon("chevron-right","tiny")+'</button>').join("")+'</div></section>':'';
+    const featured=["school","apps","health","personal"];
+    const areasHtml='<section class="section home-content-section home-areas"><div class="section-head"><h2>Areas</h2><button class="subtle-link" data-action="tab" data-view="areas">See all</button></div><div class="home-area-grid">'+
+      featured.map(id=>{
+        const total=activeProjects.filter(p=>p.areaId===id).length+
+          activeTasks.filter(t=>(data.projects.find(p=>p.id===t.projectId)?.areaId||t.areaId)===id).length;
+        return '<button class="home-area-link home-area-'+id+'" data-action="area-detail" data-id="'+id+'"><strong>'+escapeHtml(areaName(id))+'</strong><span>'+(total?total+' open item'+(total===1?"":"s"):"Open area")+'</span>'+icon("chevron-right","tiny")+'</button>';
+      }).join("")+'</div></section>';
+    const followups=data.tasks.filter(t=>t.kind==="followup"&&!t.needsReview&&isOpen(t)&&t.dueDate&&t.dueDate<=today()).sort(taskSort).slice(0,3);
+    const upcoming=schedule.homeSummary();
+    const followupSection=followups.length?'<section class="section home-content-section"><div class="section-head"><h2>Follow-ups</h2></div>'+followups.map(taskRow).join("")+'</section>':'';
+    return top+quick+starting+focusSection+projectSection+areasHtml+upcoming+followupSection+schedule.homeWorkShifts();
   }
   function areas(){
     if(state.areaId)return areaDetail();
@@ -251,7 +270,15 @@
         localStorage.setItem(KEY,JSON.stringify(recovered));
         data=recovered;closeSheet();switchTab("home");toast("Cloud backup restored");return;
       }
-    }catch(error){alert("Google account operation failed: "+(error?.message||String(error)));}
+    }catch(error){
+      if(error?.code==="auth/unauthorized-domain"){
+        alert("Firebase has not authorized downaironly.github.io. In your Command Firebase project, open Authentication → Settings → Authorized domains, then add downaironly.github.io. Save it and try again.");
+      }else if(error?.code==="auth/operation-not-allowed"){
+        alert("Google sign-in is not enabled for Command. Open Firebase Authentication → Sign-in method → Google and enable it.");
+      }else{
+        alert("Google account operation failed: "+(error?.message||String(error)));
+      }
+    }
   }
   function settings(){
     showSheet('<div class="sheet-head"><h2 class="sheet-title">Settings & backup</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+icon("x")+'</button></div>'+
@@ -302,6 +329,12 @@
       return;
     }
     if(action==='quick-add'){quickAdd();return;}
+    if(action==='home-add-plan'){
+      schedule.setDomain("personal");
+      state.view="schedule";state.projectId=null;state.areaId=null;render();resetPageScroll();
+      schedule.handleAction({dataset:{action:"schedule-add"}});
+      return;
+    }
     if(action==='area-detail'){state.areaId=id;state.projectId=null;state.view='areas';render();resetPageScroll();return;}
     if(action==='review-project'){const p=data.projects.find(p=>p.id===id);if(p)p.needsReview=false;save();render();return;}
     if(['pin','unpin','dismiss','move-pin','restore-suggestions'].includes(action)){
