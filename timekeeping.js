@@ -16,7 +16,7 @@ function scheduledMinutes(event){
 }
 function autoBreakMinutes(duration){
  if(!Number.isFinite(duration)||duration<=0)return 0;
- return duration>480?30:duration>360?15:0;
+ return duration>=480?30:duration>=360?15:0;
 }
 function validOverride(value){
  if(value==null||value==="")return null;
