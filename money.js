@@ -1,6 +1,6 @@
 (function(){
  "use strict";
- const KEY="command.finance.v1", RECOVERY="command.finance.beforeImport";
+ const KEY="command.finance.v1", RECOVERY="command.finance.beforeImport", CLOUD_VERIFIED="command.finance.cloudVerified";
  const FORMAT="everyday-section-v1";
  const iso=x=>typeof x==="string"&&/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(x)&&!Number.isNaN(Date.parse(x+"T12:00:00Z"));
  const day=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
@@ -106,6 +106,8 @@
  const dispatch=()=>window.dispatchEvent(new CustomEvent("command-money-updated"));
  function savePending(){
    if(!pending)return;
+   if(record?.report?.transactions>0&&pending.report.transactions===0)
+     throw Error("Refusing to replace financial history with a settings-only file.");
    if(record?.sha256===pending.sha256){pending=null;dispatch();return;}
    // No automatic merge or overwrite: an updated export has to be consciously
    // reviewed, and the previous local copy is preserved for recovery.
@@ -220,18 +222,90 @@
      (same?'<p class="money-ok">This file is already imported.</p>':
        '<button class="button" data-money-action="confirm-import">Import this finance file</button>')+'</section>';
  }
+
+ function cloudRecord(){
+   const cloud=window.CommandCloud;
+   if(!cloud?.ready||!cloud.user)return null;
+   try{
+     const stored=JSON.parse(localStorage.getItem(CLOUD_VERIFIED)||"null");
+     if(stored?.uid===cloud.user.uid&&stored.sha256===record?.sha256)return stored;
+   }catch{}
+   return null;
+ }
+ function stampCloud(revision,sha256){
+   const cloud=window.CommandCloud;
+   if(!cloud?.user)throw Error("Sign in to Google first.");
+   localStorage.setItem(CLOUD_VERIFIED,JSON.stringify({
+     uid:cloud.user.uid,revision,sha256,verifiedAt:new Date().toISOString()
+   }));
+ }
+ async function backupCloud(){
+   const cloud=window.CommandCloud;
+   if(!cloud?.ready||!cloud.user)throw Error("Sign in with Google in Command Settings before cloud backup.");
+   if(!record||!verified)throw Error("Import and verify a local finance file first.");
+   const manifest=await cloud.getFinanceManifest();
+   if(manifest?.sha256===record.sha256){
+     const back=await cloud.getFinanceBackup();
+     if(JSON.stringify(back.data)!==JSON.stringify(record.data))throw Error("Cloud copy content differs from device data.");
+     stampCloud(back.revision,back.sha256);dispatch();
+     alert("Cloud finance backup verified. Source IDs and all finance fields match the local copy.");
+     return;
+   }
+   const label=manifest?"REPLACE":"BACKUP";
+   const counts=manifest?manifest.transactions+" transactions, "+manifest.rules+" rules, "+manifest.schedules+" schedules":"no prior finance backup";
+   if(prompt("Upload "+record.report.transactions+" finance transactions to your Google account? Current cloud: "+counts+". This is a manual snapshot, not automatic sync. Type "+label+" to continue.")!==label)return;
+   const revision=await cloud.saveFinanceBackup(record.data,record.sha256,manifest?.revision??null);
+   // Verify the complete snapshot by fetching and comparing it from Firestore.
+   const back=await cloud.getFinanceBackup();
+   if(back.revision!==revision||back.sha256!==record.sha256||
+      JSON.stringify(back.data)!==JSON.stringify(record.data))
+     throw Error("Cloud upload could not be verified. Do NOT delete Everyday's finance data.");
+   stampCloud(back.revision,back.sha256);dispatch();
+   alert("Finance cloud backup verified. Every original transaction and budget field matches.");
+ }
+ async function inspectCloud(){
+   const cloud=window.CommandCloud;
+   if(!cloud?.ready||!cloud.user)throw Error("Sign in with Google in Command Settings first.");
+   const back=await cloud.getFinanceBackup();
+   if(!back){alert("No finance backup exists for this Google account yet.");return;}
+   const checked=validateFile({format:FORMAT,section:"finances",data:back.data});
+   const report=checked.report;
+   if(record?.sha256===back.sha256&&JSON.stringify(record.data)===JSON.stringify(back.data)){
+     stampCloud(back.revision,back.sha256);dispatch();
+     alert("Cloud and local finance data match exactly. "+report.transactions+" transaction IDs verified.");
+     return;
+   }
+   const current=record?.report?.transactions??0;
+   if(prompt("Verified cloud backup has "+report.transactions+" transactions, "+report.schedules+" recurring items, "+report.categoryLimits+" category limits (local copy: "+current+" transactions). Restoring replaces the local Money copy but keeps an on-device recovery snapshot. Type RESTORE to continue.")!=="RESTORE")return;
+   if(record){
+     const previous=localStorage.getItem(KEY);
+     if(previous)localStorage.setItem(RECOVERY,previous);
+   }
+   const saved={format:"command-finance-v1",sourceFormat:FORMAT,importedAt:new Date().toISOString(),
+     sourceFilename:"Google cloud backup",sha256:back.sha256,data:back.data};
+   const serialized=JSON.stringify(saved);
+   localStorage.setItem(KEY,serialized);
+   if(localStorage.getItem(KEY)!==serialized||await sha(saved.data)!==back.sha256)
+     throw Error("Cloud restore verification failed. Previous data is saved in recovery.");
+   record={...saved,report:report};verified=true;pending=null;
+   stampCloud(back.revision,back.sha256);dispatch();
+   alert("Cloud money restored and verified. Everyday's data was not touched.");
+ }
  function render(){
    const importControls='<input id="money-import-input" type="file" accept=".json,application/json" hidden>'+
      '<div class="money-actions"><button class="button" data-money-action="pick-file">Import Everyday finance</button>'+
-     (record?'<button class="button secondary" data-money-action="export-finance">Export Money JSON</button>':'')+'</div>';
+     (record?'<button class="button secondary" data-money-action="export-finance">Export Money JSON</button>':'')+
+     '<button class="button secondary" data-money-action="cloud-check">Check cloud backup</button>'+
+     (record?'<button class="button secondary" data-money-action="cloud-backup">Back up to Firebase</button>':'')+'</div>';
    const header='<div class="money-header"><div><h1>Money</h1><p>Your paychecks, purchases, bills and budgets</p></div></div>';
    if(error)return header+'<div class="money-warning">'+e(error)+'</div>'+importControls;
    if(!record)return header+importControls+previewView()+
      '<div class="money-empty"><strong>No finances imported yet</strong><p>In Everyday, export the <b>Finances JSON</b> section. Choose that file here to see a verification report before saving. Your work schedule and existing Command data will remain untouched.</p></div>';
    const f=record.data,r=record.report;
+   const currentCloud=cloudRecord();
    const verification=section("Import integrity",'<span class="money-verified">'+(verified?"Local copy verified":"Checking saved copy")+'</span>',
      '<p class="money-help">'+r.transactions+' original IDs · '+r.rules+' classification rules · '+r.schedules+' recurring items · '+r.categoryLimits+' limits · '+r.unresolvedBank+' unresolved bank rows.</p>'+
-     '<p class="money-help">Imported '+e(record.importedAt.slice(0,10))+' from '+e(record.sourceFilename)+'. Cloud backup is separate and not yet verified.</p>');
+     '<p class="money-help">Imported '+e(record.importedAt.slice(0,10))+' from '+e(record.sourceFilename)+'. '+(currentCloud?'Google backup checked '+e(currentCloud.verifiedAt.slice(0,10))+' (same checksum).':'Google cloud backup not verified for this copy.')+'</p>');
    const nav='<div class="money-subnav">'+[["overview","Overview"],["history","History"],["bills","Bills"],["budgets","Budgets"]].map(([key,name])=>
      '<button class="'+(view===key?'active':'')+'" data-money-action="subview" data-subview="'+key+'">'+name+'</button>').join("")+'</div>';
    let body="";
@@ -274,6 +348,8 @@
      if(action==="next-page"){page++;dispatch();}
      if(action==="month"){month=button.value;page=0;dispatch();}
      if(action==="export-finance"&&record)download("command-finances-"+day()+".json",{format:FORMAT,section:"finances",data:record.data});
+     if(action==="cloud-backup"){await backupCloud();return;}
+     if(action==="cloud-check"){await inspectCloud();return;}
      if(action==="confirm-import"){
        if(!pending)return;
        const same=record?.sha256===pending.sha256;

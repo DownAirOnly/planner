@@ -25,3 +25,13 @@ No private credentials belong in the public repository.
 GitHub Pages settings: https://github.com/DownAirOnly/planner/settings/pages
 GitHub Actions: https://github.com/DownAirOnly/planner/actions
 Firebase rules: https://console.firebase.google.com/project/command-c8162/firestore/rules
+
+## v25: Finance migration safety
+
+- Settings → Google account sign-in must work before a Money cloud snapshot can be saved.
+- Open Money and import an Everyday `everyday-section-v1` Finances JSON export. All transaction fields, stable IDs, receipts, classification rules, and budget-plan records are stored unchanged.
+- The preview shows counts, inclusive date range, and aggregate income, expense and transfer totals. Transactions are not appended or merged. A full replacement needs typed confirmation; previous Command Money data is preserved in `command.finance.beforeImport`.
+- Money → **Back up to Firebase** explicitly uploads immutable finance chunks and publishes the manifest only after upload. A read-back validates the SHA-256 and compares every field. **Check cloud backup** verifies/optionally restores.
+- Publish `firestore.rules` from this repository to permit the per-user `finance/manifest` and `financeChunks` paths. Committing the rules does not deploy them.
+- Do not remove Money from Everyday until a freshly exported backup has been imported, the local checksum is verified, cloud checksum is verified, and source/target transaction counts plus income/expense/transfer totals match. Keep an external export for recovery.
+- Finance cloud snapshots are **manual**. No background sync is implemented.
