@@ -6,15 +6,15 @@
 
 1. Small top brand and Settings (no device-status text).
 2. Work / School / Personal / All.
-3. Week / Month / 4 Weeks, with Import and Add beside the tabs.
+3. Week / Scheduled / Month, with Import and Add beside the tabs.
 4. Compact calendar directly below controls: prev, date range, Today, next; weekday labels match the selected period.
-5. **Shifts**: chronological rows immediately below the calendar. Date at left, hours and assignment/area in the center, adjusted hours at right.
-6. Compact Work Week / Pay Week selector and Scheduled / Breaks / Adjusted totals.
+5. **Shifts**: chronological rows immediately below the calendar. Date at left, time and assignment/island in the center, full scheduled duration at right.
+6. Compact Work Week / Pay Week selector and Scheduled / Breaks / Adjusted totals. In Scheduled mode the selector appears above the weekly slices.
 7. Usual workdays near the bottom.
 
 **Preserve** v10 card radii, spacing, colors, date cell height, shift density, and summary sizing. Avoid new introductory headings, duplicated period labels, or extra explanatory cards. Check any UI changes against the approved iPhone screenshots before altering layout.
 
-**Work > Week:** Pay Week (left, default) displays Sunday–Saturday; Work Week (right) displays Friday–Thursday. Switching these changes the calendar dates, shift list, and hours totals together and persists the choice. Switching periods from Month or 4 Weeks opens the corresponding Week view. Month and 4 Weeks remain Sunday-first calendars, and 4 Weeks contains four full Sunday–Saturday rows. School, Personal, and All week calendars also start Sunday. No calendar begins on Monday.
+**Work > Week:** Pay Week (left, default) displays Sunday–Saturday; Work Week (right) displays Friday–Thursday. Switching these changes the calendar dates, shift list, and hours totals together and persists the choice. **Scheduled** shows a slice for every week with saved shifts, grouped according to the selected period; its selector appears above the slices. **Month** remains a Sunday-first conventional calendar. School, Personal, and All week calendars begin Sunday.
 
 Location parsing: WWoHP / Hogsmeade means **Hogsmeade Village**; Area Support is an assignment. Missing locations stay missing rather than inheriting another shift's location. Do not alter saved shifts without an explicit edit.
 

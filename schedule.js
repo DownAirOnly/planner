@@ -143,16 +143,16 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
  function periodHeader(p){
   return labelDate(p.start)+' – '+labelDate(p.end);
  }
+ function periodSelector(){
+   return '<div class="schedule-period-switch" role="group" aria-label="Hours grouping">'+
+     '<button type="button" class="'+(ui.periodMode==="pay"?"active":"")+'" data-action="schedule-period" data-period="pay">Pay Week</button>'+
+     '<button type="button" class="'+(ui.periodMode==="work"?"active":"")+'" data-action="schedule-period" data-period="work">Work Week</button></div>';
+ }
  function workPeriodSummary(){
-  const p=period(),items=periodEvents(),totals=timekeeping.aggregate(items);
-  return '<section class="schedule-period-block">'+
-    '<div class="schedule-period-switch" role="group" aria-label="Hours grouping">'+
-      '<button type="button" class="'+(ui.periodMode==="pay"?"active":"")+'" data-action="schedule-period" data-period="pay">Pay Week</button>'+
-      '<button type="button" class="'+(ui.periodMode==="work"?"active":"")+'" data-action="schedule-period" data-period="work">Work Week</button></div>'+
-    '<div class="schedule-period-caption"><strong>'+esc(periodHeader(p))+'</strong></div>'+
-    timeSummary(totals)+
-    
-   '</section>';
+   const p=period(),items=periodEvents(),totals=timekeeping.aggregate(items);
+   return '<section class="schedule-period-block">'+(ui.mode==="scheduled"?"":periodSelector())+
+     '<div class="schedule-period-caption"><strong>'+esc(periodHeader(p))+'</strong></div>'+
+     timeSummary(totals)+'</section>';
  }
  function workShiftRow(e,date){
   return '<button class="schedule-compact-shift'+zoneStyle(e)+'" data-action="schedule-edit" data-id="'+esc(e.id)+'"><span class="schedule-compact-day">'+esc(labelDate(date))+'</span><span class="schedule-compact-main"><strong>'+esc(fmtTime(e))+'</strong><small>'+esc(workMeta(e)||"Work shift")+'</small></span><strong class="schedule-compact-hours" title="Full scheduled duration">'+esc(duration(e))+'</strong></button>';
@@ -192,8 +192,8 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
      }
    }
    const weeks=[...groups.keys()].sort();
-   if(!weeks.length)return '<section class="section schedule-scheduled-empty"><h2>Scheduled</h2><div class="empty"><strong>No saved work shifts</strong><p>Import or add a schedule to see its weeks here.</p></div></section>';
-   return '<section class="schedule-scheduled-view"><div class="section-head"><h2>Scheduled</h2><span class="muted">'+weeks.length+' week'+(weeks.length===1?"":"s")+' with shifts</span></div>'+
+   if(!weeks.length)return '<section class="section schedule-scheduled-empty"><h2>Scheduled</h2>'+periodSelector()+'<div class="empty"><strong>No saved work shifts</strong><p>Import or add a schedule to see its weeks here.</p></div></section>';
+   return '<section class="schedule-scheduled-view"><div class="section-head"><h2>Scheduled</h2><span class="muted">'+weeks.length+' week'+(weeks.length===1?"":"s")+' with shifts</span></div>'+periodSelector()+
      weeks.map(start=>{
        const occurrences=groups.get(start).sort((a,b)=>a.date.localeCompare(b.date)||String(a.event.startTime).localeCompare(String(b.event.startTime)));
        const days=timekeeping.period(start,ui.periodMode).days;

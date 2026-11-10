@@ -299,3 +299,6 @@
 .schedule-scheduled-title span{font-size:11px;color:var(--muted)}
 .schedule-scheduled-week .schedule-compact-list{margin-top:0}
 .schedule-cal-grid.week .schedule-date{height:45px}
+
+/* v19: Period grouping remains accessible above a long Scheduled list. */
+.schedule-scheduled-view>.schedule-period-switch,.schedule-scheduled-empty>.schedule-period-switch{margin:0 0 3px}
