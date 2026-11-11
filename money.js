@@ -21,6 +21,8 @@
    }else throw Error("Choose Everyday's Finances JSON export, or a complete Everyday backup.");
    if(!finance||typeof finance!=="object"||Array.isArray(finance))throw Error("Invalid finance section.");
    const {transactions,classificationRules,budgetPlan}=finance;
+   const archived=finance.archivedTransactions??[];
+   if(!Array.isArray(archived)||archived.length>50000)throw Error("Invalid archived finance history.");
    if(!Array.isArray(transactions)||transactions.length>50000||!Array.isArray(classificationRules)||classificationRules.length>300||
       !budgetPlan||typeof budgetPlan!=="object"||Array.isArray(budgetPlan))throw Error("Finance file is missing valid transactions, rules, or budget plan.");
    const ids=[],ext=new Set(),duplicateExternal=[];
@@ -51,6 +53,15 @@
      else transfer+=t.amountCents;
    }
    unique(ids,"transaction ID");
+   for(const t of archived){
+     if(!t||typeof t.id!=="string"||!t.id.trim()||!iso(t.date)||
+        !["expense","income","transfer"].includes(t.kind)||
+        !Number.isSafeInteger(t.amountCents)||t.amountCents<=0||
+        typeof t.description!=="string"||!t.description.trim())
+       throw Error("Invalid archived transaction.");
+     ids.push(t.id);
+   }
+   unique(ids,"active or archived transaction ID");
    const ruleIds=classificationRules.map(x=>x?.id);
    for(const rule of classificationRules)if(!rule||typeof rule.name!=="string"||!rule.name.trim()||!rule.matchText||!rule.category)throw Error("Invalid classification rule.");
    unique(ruleIds,"classification rule ID");
@@ -82,7 +93,7 @@
      paychecks:schedules.filter(x=>x.kind==="income").length,
      categoryLimits:categoryLimits.length,
      paycheckOverrides:Object.keys(paycheckAmounts).length,billAssignments:Object.keys(billAssignments).length,
-     unresolvedBank:unresolvedBankRows.length};
+     unresolvedBank:unresolvedBankRows.length,archived:archived.length};
    return {finance:structuredClone(finance),report,kind};
  }
  async function sha(data){
@@ -101,9 +112,12 @@
      else changed++;
    }
    for(const id of old.keys())if(!fresh.has(id))missing++;
-   return {added,changed,unchanged,missing};
+   const archivedPrevious=previous.archivedTransactions||[];
+   const restored=archivedPrevious.filter(t=>fresh.has(t.id)).length;
+   return {added,changed,unchanged,missing,archivedRestored:restored};
  }
  let record=null,error="",pending=null,verified=false,view="overview",span=7,month="all",page=0;
+ let search="",kindFilter="all",categoryFilter="all",editId=null,showArchived=false;
  function read(){
    const raw=localStorage.getItem(KEY);
    if(!raw){record=null;return;}
@@ -123,6 +137,8 @@
      throw Error("Refusing to replace financial history with a settings-only file.");
    if(pending.diff?.missing)
      throw Error("The selected export is missing "+pending.diff.missing+" previously imported transaction IDs. No records were changed. Export a newer, complete Everyday finance file.");
+   if(pending.diff?.archivedRestored)
+     throw Error("This export would restore archived transactions. Review the archived records before replacing Money data.");
    if(record?.sha256===pending.sha256){pending=null;dispatch();return;}
    // No automatic merge or overwrite: an updated export has to be consciously
    // reviewed, and the previous local copy is preserved for recovery.
@@ -175,23 +191,182 @@
  };
  const card=(name,value,detail)=>'<div class="money-stat"><span>'+e(name)+'</span><strong>'+e(value)+'</strong>'+(detail?'<small>'+e(detail)+'</small>':'')+'</div>';
  const section=(title,right,body)=>'<section class="money-section"><div class="section-head"><h2>'+title+'</h2>'+(right||"")+'</div>'+body+'</section>';
- function recordsView(f){
-   const dates=[...new Set(f.transactions.map(t=>(t.purchaseDate||t.date).slice(0,7)))].sort().reverse();
-   if(month!=="all"&&!dates.includes(month))month="all";
-   const rows=f.transactions.filter(t=>month==="all"||(t.purchaseDate||t.date).startsWith(month))
-     .sort((a,b)=>b.date.localeCompare(a.date)||(b.time||"").localeCompare(a.time||""));
+
+ const moneyAmount=input=>{
+   const m=String(input||"").trim().replace(/^\$/,"").match(/^(\d{1,8})(?:\.(\d{1,2}))?$/);
+   if(!m)throw Error("Enter an amount like 12.50, with no negative sign.");
+   const value=Number(m[1])*100+Number((m[2]||"").padEnd(2,"0"));
+   if(!Number.isSafeInteger(value)||value<=0)throw Error("Amount must be greater than zero.");
+   return value;
+ };
+ const prettyAmount=n=>(n/100).toFixed(2);
+ const makeId=()=>("command-"+(crypto.randomUUID?.()||Date.now().toString(36)+"-"+Math.random().toString(36).slice(2)));
+ const selectOption=(value,selected,label)=>'<option value="'+e(value)+'"'+(value===selected?' selected':'')+'>'+e(label||value)+'</option>';
+ const categories=data=>{
+   const known=new Set(["Uncategorized","Groceries","Dining","Transportation","Bills","Health","Entertainment","Shopping","Income","Transfers"]);
+   for(const t of data.transactions)if(t.category)known.add(t.category);
+   for(const limit of data.budgetPlan.categoryLimits)if(limit.category)known.add(limit.category);
+   return [...known].sort((a,b)=>a.localeCompare(b));
+ };
+ function transactionEditor(f){
+   if(editId===null)return "";
+   const original=editId==="new"?null:f.transactions.find(t=>t.id===editId);
+   if(editId!=="new"&&!original){editId=null;return "";}
+   const bank=!!original?.bankDescription,lockedAmount=bank||!!original?.items?.length;
+   const d=original||{date:day(),kind:"expense",amountCents:0,description:"",category:"Uncategorized"};
+   const catList='<datalist id="money-categories">'+categories(f).map(c=>'<option value="'+e(c)+'"></option>').join("")+'</datalist>';
+   const formInput=(label,name,val,type="text",extra="")=>
+     '<label class="money-tx-field"><span>'+label+'</span><input name="'+name+'" type="'+type+'" value="'+e(val)+'" '+extra+'></label>';
+   const options=['expense','income','transfer'].map(k=>selectOption(k,d.kind,k[0].toUpperCase()+k.slice(1))).join("");
+   const bankNotice=bank?'<div class="money-bank-lock"><strong>Original bank record · protected</strong><p>'+e(original.bankDescription)+'</p><small>'+
+     e(original.accountLabel||"")+' · Posted '+e(original.postedDate||original.date)+' · '+cents(original.amountCents)+
+     '</small><p>Bank amount, original date, statement, and reference IDs stay unchanged.</p></div>':"";
+   const receipt=original?.items?.length?'<details class="money-receipt-edit"><summary>Receipt items ('+original.items.length+')</summary><p>Item amounts are retained so the receipt continues to reconcile.</p>'+
+     original.items.map((i,n)=>'<div class="money-receipt-row"><label>Item <input name="receipt-name-'+n+'" maxlength="120" value="'+e(i.name)+'"></label>'+
+       '<label>Category <input name="receipt-category-'+n+'" maxlength="80" value="'+e(i.category)+'"></label>'+
+       '<strong>'+cents(i.amountCents)+'</strong></div>').join("")+'</details>':"";
+   return '<section class="money-tx-editor" id="money-tx-editor"><div class="section-head"><h2>'+(original?"Edit transaction":"New transaction")+'</h2>'+
+     '<button data-money-action="cancel-edit">Cancel</button></div>'+
+     bankNotice+'<form id="money-transaction-form" class="money-transaction-form">'+
+     '<div class="money-tx-form-grid">'+
+     (lockedAmount?'<div class="money-tx-field"><span>Amount (locked to source)</span><strong>'+cents(d.amountCents)+'</strong></div>':
+       formInput("Amount in USD","amount",original?prettyAmount(d.amountCents):"","text",'inputmode="decimal" maxlength="15" placeholder="0.00" required'))+
+     (bank?'<div class="money-tx-field"><span>Posted date (locked)</span><strong>'+e(d.date)+'</strong></div>':
+       formInput("Date","date",d.date,"date",'required'))+
+     formInput("Description","description",d.description,"text",'required maxlength="200"')+
+     '<label class="money-tx-field"><span>Type</span><select name="kind">'+options+'</select></label>'+
+     formInput("Category","category",d.category,"text",'list="money-categories" maxlength="80"')+
+     formInput("Subcategory","subcategory",d.subcategory||"","text",'maxlength="80"')+
+     formInput("Merchant","merchant",d.merchant||"","text",'maxlength="160"')+
+     (bank?"":formInput("Payment account","accountLabel",d.accountLabel||"","text",'maxlength="120"'))+
+     formInput("Purchase date (optional)","purchaseDate",d.purchaseDate||"","date")+
+     formInput("Time (optional)","time",d.time||"","time")+
+     '</div>'+catList+
+     '<label class="money-tx-field money-tx-wide"><span>Note</span><textarea name="note" rows="2" maxlength="500">'+e(d.note||"")+'</textarea></label>'+
+     '<label class="money-tx-field money-tx-wide"><span>Receipt notes</span><textarea name="itemization" rows="2" maxlength="3000">'+e(d.itemization||"")+'</textarea></label>'+
+     receipt+
+     (original?.billKey?'<p class="money-help">Linked bill: '+e(original.billKey)+' (preserved)</p>':'')+
+     '<div class="money-tx-actions"><button class="button" type="submit">Save transaction</button>'+
+     (original?'<button type="button" class="button secondary money-archive-button" data-money-action="archive-transaction" data-id="'+e(original.id)+'">Archive transaction</button>':'')+
+     '</div></form></section>';
+ }
+ function getFormTx(form,f){
+   const fields=new FormData(form),v=Object.fromEntries(fields.entries());
+   const original=editId&&editId!=="new"?f.transactions.find(t=>t.id===editId):null;
+   if(editId!=="new"&&!original)throw Error("The transaction no longer exists.");
+   const bank=!!original?.bankDescription;
+   const locked=bank||!!original?.items?.length;
+   const description=String(v.description||"").trim();
+   if(!description||description.length>200)throw Error("A description is required (max 200 characters).");
+   const kind=String(v.kind||"");
+   if(!["expense","income","transfer"].includes(kind))throw Error("Unknown transaction type.");
+   const date=bank?original.date:String(v.date||"");
+   if(!iso(date))throw Error("Choose a valid transaction date.");
+   const amountCents=locked?original.amountCents:moneyAmount(v.amount);
+   const tx=original?structuredClone(original):{id:makeId(),currency:"USD",source:"manual"};
+   Object.assign(tx,{date,kind,amountCents,description,category:String(v.category||"").trim()||"Uncategorized"});
+   for(const field of ["merchant","subcategory","note","itemization","purchaseDate","time"]){
+     const value=String(v[field]||"").trim();
+     if(value)tx[field]=value;else delete tx[field];
+   }
+   if(!bank){
+     const account=String(v.accountLabel||"").trim();
+     if(account)tx.accountLabel=account;else delete tx.accountLabel;
+   }
+   if(tx.purchaseDate&&!iso(tx.purchaseDate))throw Error("Invalid purchase date.");
+   if(tx.time&&!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(tx.time))throw Error("Invalid time.");
+   if(original?.items?.length)tx.items=original.items.map((item,n)=>({
+     ...item,name:String(v["receipt-name-"+n]||"").trim(),
+     category:String(v["receipt-category-"+n]||"").trim()
+   }));
+   return tx;
+ }
+ async function commitLedger(next,action){
+   if(!record||!verified)throw Error("The current financial copy has not passed local verification.");
+   const checked=validateFile({format:FORMAT,section:"finances",data:next});
+   const hash=await sha(checked.finance);
+   // Serialize before making any changes. Never mutate the committed in-memory object.
+   const saved={...record,format:"command-finance-v1",data:checked.finance,
+     sha256:hash,editedAt:new Date().toISOString(),lastLocalAction:action};
+   delete saved.report;
+   const serialized=JSON.stringify(saved),previous=localStorage.getItem(KEY);
+   if(!previous)throw Error("Finance storage is missing; nothing was changed.");
+   // Require a recovery snapshot, then write and compare the new data.
+   // If storage quota is reached, the original record remains untouched.
+   localStorage.setItem(RECOVERY,previous);
+   localStorage.setItem(KEY,serialized);
+   const stored=localStorage.getItem(KEY);
+   if(stored!==serialized||await sha(JSON.parse(stored).data)!==hash)
+     throw Error("Money save could not be verified. Keep your previous export.");
+   record={...saved,report:checked.report};
+   verified=true;
+   pending=null;
+   dispatch();
+ }
+ async function archiveTransaction(id){
+   const original=record?.data.transactions.find(t=>t.id===id);
+   if(!original)throw Error("Transaction not found.");
+   if(!confirm("Archive "+(original.merchant||original.description)+" ("+cents(original.amountCents)+")? It will no longer affect totals, but its original details can be restored."))return;
+   const next=structuredClone(record.data);
+   next.transactions=next.transactions.filter(t=>t.id!==id);
+   next.archivedTransactions=[...(next.archivedTransactions||[]),{...original,archivedAt:new Date().toISOString()}];
+   await commitLedger(next,"archive transaction");
+   editId=null;showArchived=true;view="history";dispatch();
+ }
+ async function restoreTransaction(id){
+   const original=record?.data.archivedTransactions?.find(t=>t.id===id);
+   if(!original)throw Error("Archived transaction not found.");
+   const next=structuredClone(record.data);
+   next.archivedTransactions=next.archivedTransactions.filter(t=>t.id!==id);
+   const tx={...original};delete tx.archivedAt;
+   next.transactions.push(tx);
+   await commitLedger(next,"restore transaction");
+   showArchived=false;view="history";dispatch();
+ }
+ function historyRows(f){
+   let rows=showArchived?(f.archivedTransactions||[]):f.transactions;
+   if(month!=="all")rows=rows.filter(t=>(t.purchaseDate||t.date).startsWith(month));
+   if(kindFilter!=="all")rows=rows.filter(t=>t.kind===kindFilter);
+   if(categoryFilter!=="all")rows=rows.filter(t=>t.category===categoryFilter);
+   const q=search.trim().toLocaleLowerCase();
+   if(q)rows=rows.filter(t=>[
+     t.description,t.merchant,t.category,t.subcategory,t.bankDescription,
+     t.accountLabel,t.statementLabel,t.note,t.itemization,t.id
+   ].some(x=>String(x||"").toLocaleLowerCase().includes(q))||
+     t.items?.some(i=>String(i.name||"").toLocaleLowerCase().includes(q)));
+   rows=[...rows].sort((a,b)=>b.date.localeCompare(a.date)||(b.time||"").localeCompare(a.time));
+   page=Math.min(page,Math.max(0,Math.ceil(rows.length/35)-1));
    const shown=rows.slice(page*35,(page+1)*35);
-   return '<div class="money-list-toolbar"><label>Month <select id="money-month"><option value="all">All history</option>'+
-     dates.map(m=>'<option value="'+m+'" '+(m===month?'selected':'')+'>'+m+'</option>').join("")+'</select></label><span>'+rows.length+' transactions</span></div>'+
-     '<div class="money-history">'+shown.map(t=>'<details class="money-transaction"><summary><span><strong>'+e(t.merchant||t.description)+'</strong><small>'+e(t.date)+' · '+e(t.category||"Uncategorized")+'</small></span><b class="money-'+e(t.kind)+'">'+(t.kind==="expense"?"−":t.kind==="income"?"+":"↔")+cents(t.amountCents).replace("−","")+'</b></summary>'+
+   const total=rows.reduce((sum,t)=>sum+(t.kind==="expense"?-t.amountCents:t.kind==="income"?t.amountCents:0),0);
+   return '<div class="money-history-count"><span>'+rows.length+' '+(showArchived?"archived":"matching")+' transactions</span><strong>Net '+cents(total)+'</strong></div>'+
+     '<div class="money-history">'+(shown.length?shown.map(t=>'<details class="money-transaction"><summary><span><strong>'+e(t.merchant||t.description)+'</strong><small>'+e(t.date)+' · '+e(t.category||"Uncategorized")+
+     (t.bankDescription?' · Bank':"")+'</small></span><b class="money-'+e(t.kind)+'">'+(t.kind==="expense"?"−":t.kind==="income"?"+":"↔")+cents(t.amountCents).replace("−","")+'</b></summary>'+
      '<div class="money-transaction-details"><p><strong>Description:</strong> '+e(t.description)+'</p>'+
      (t.bankDescription?'<p><strong>Original bank text:</strong> '+e(t.bankDescription)+'</p>':'')+
      (t.accountLabel?'<p><strong>Account:</strong> '+e(t.accountLabel)+'</p>':'')+
      (t.statementLabel?'<p><strong>Statement:</strong> '+e(t.statementLabel)+'</p>':'')+
      (t.note?'<p><strong>Note:</strong> '+e(t.note)+'</p>':'')+
      (t.items?.length?'<div><strong>Receipt items</strong>'+t.items.map(i=>'<p>'+e(i.name)+' · '+e(i.category)+' · '+cents(i.amountCents)+'</p>').join("")+'</div>':'')+
-     '<p class="money-tx-id">ID: '+e(t.id)+'</p></div></details>').join("")+'</div>'+
+     '<p class="money-tx-id">ID: '+e(t.id)+'</p>'+
+     (showArchived?'<button class="button secondary" data-money-action="restore-transaction" data-id="'+e(t.id)+'">Restore transaction</button>':
+       '<button class="button secondary" data-money-action="edit-transaction" data-id="'+e(t.id)+'">Edit transaction</button>')+
+     '</div></details>').join(""):'<p class="money-help money-empty-results">No matching transactions.</p>')+'</div>'+
      (rows.length>35?'<div class="money-pager"><button data-money-action="prev-page" '+(page===0?'disabled':'')+'>Previous</button><span>Page '+(page+1)+' of '+Math.ceil(rows.length/35)+'</span><button data-money-action="next-page" '+((page+1)*35>=rows.length?'disabled':'')+'>Next</button></div>':'');
+ }
+ function recordsView(f){
+   const dates=[...new Set([...f.transactions,...(f.archivedTransactions||[])].map(t=>(t.purchaseDate||t.date).slice(0,7)))].sort().reverse();
+   if(month!=="all"&&!dates.includes(month))month="all";
+   const allCats=[...new Set(f.transactions.map(t=>t.category).filter(Boolean))].sort();
+   return '<div class="money-history-toolbar"><button class="button" data-money-action="new-transaction">+ New transaction</button>'+
+     '<button class="button secondary'+(showArchived?" active":"")+'" data-money-action="toggle-archived">'+(showArchived?"Show active":"Archived ("+(f.archivedTransactions?.length||0)+")")+'</button></div>'+
+     '<div class="money-history-filters">'+
+     '<label>Search<input id="money-search" type="search" value="'+e(search)+'" placeholder="Merchant, description, bank text…" autocomplete="off"></label>'+
+     '<label>Month<select id="money-month"><option value="all">All history</option>'+
+     dates.map(m=>selectOption(m,month,m)).join("")+'</select></label>'+
+     '<label>Type<select id="money-kind">'+[["all","All types"],["expense","Expenses"],["income","Income"],["transfer","Transfers"]].map(([k,label])=>selectOption(k,kindFilter,label)).join("")+'</select></label>'+
+     '<label>Category<select id="money-category">'+selectOption("all",categoryFilter,"All categories")+
+     allCats.map(k=>selectOption(k,categoryFilter,k)).join("")+'</select></label></div>'+
+     '<div id="money-history-results">'+historyRows(f)+'</div>';
  }
  function budgetView(f){
    const plan=f.budgetPlan,monthDate=day().slice(0,7),expenses=f.transactions.filter(t=>t.kind==="expense"&&(t.purchaseDate||t.date).startsWith(monthDate));
@@ -231,6 +406,7 @@
      card("Monthly budgets",String(r.categoryLimits),current?"Current "+current.categoryLimits:"")+'</div>'+
      (current?'<p class="money-help">Compared with Command: '+diff.added+' new IDs, '+diff.changed+' changed records, '+diff.unchanged+' unchanged, '+diff.missing+' MISSING from this export.</p>':'')+
      (diff.missing?'<p class="money-warning">This export omits previously imported transactions. Import is blocked to protect existing history.</p>':'')+
+     (diff.archivedRestored?'<p class="money-warning">This export contains archived records. Re-import is blocked to preserve your archive decisions.</p>':'')+
      '<div class="money-compare"><div><span>Income</span><strong>'+cents(r.income)+'</strong></div>'+
      '<div><span>Expenses</span><strong>'+cents(r.expense)+'</strong></div>'+
      '<div><span>Transfers (not spending)</span><strong>'+cents(r.transfer)+'</strong></div>'+
@@ -240,7 +416,7 @@
      (potentiallyIncomplete?'<p class="money-warning">This export has zero transactions. It may only contain settings, not full financial history.</p>':'')+
      '<p class="money-warning">Everyday is NOT changed. Importing makes an exact local copy; it does not merge entries, and it does not upload to Firebase. '+(record?'The previous Command finance copy is saved for recovery.':'')+'</p>'+
      (same?'<p class="money-ok">This file is already imported.</p>':
-       (diff.missing?'<p>Choose a newer full export from Everyday.</p>':
+       (diff.missing||diff.archivedRestored?'<p>Review the missing or archived records before importing.</p>':
        '<button class="button" data-money-action="confirm-import">Import this finance file</button>'))+'</section>';
  }
 
@@ -326,11 +502,14 @@
    const currentCloud=cloudRecord();
    const verification=section("Import integrity",'<span class="money-verified">'+(verified?"Local copy verified":"Checking saved copy")+'</span>',
      '<p class="money-help">'+r.transactions+' original IDs · '+r.rules+' classification rules · '+r.schedules+' recurring items · '+r.categoryLimits+' limits · '+r.unresolvedBank+' unresolved bank rows.</p>'+
-     '<p class="money-help">Imported '+e(record.importedAt.slice(0,10))+' from '+e(record.sourceFilename)+'. '+(currentCloud?'Google backup checked '+e(currentCloud.verifiedAt.slice(0,10))+' (same checksum).':'Google cloud backup not verified for this copy.')+'</p>');
+     '<p class="money-help">Imported '+e(record.importedAt.slice(0,10))+' from '+e(record.sourceFilename)+'. '+(currentCloud?'Google backup matches this copy ('+e(currentCloud.verifiedAt.slice(0,10))+').':'Changes are not backed up to Google yet, or backup not verified.')+'</p>'+
+     (record.editedAt?'<p class="money-help">Last local transaction change: '+e(record.editedAt.slice(0,16).replace("T"," "))+'. Back up again after editing.</p>':'')+
+     (r.archived?'<p class="money-help">'+r.archived+' archived transactions retained for recovery.</p>':'')
+   );
    const nav='<div class="money-subnav">'+[["overview","Overview"],["history","History"],["bills","Bills"],["budgets","Budgets"]].map(([key,name])=>
      '<button class="'+(view===key?'active':'')+'" data-money-action="subview" data-subview="'+key+'">'+name+'</button>').join("")+'</div>';
    let body="";
-   if(view==="history")body=section("Transactions",'<span class="muted">'+r.transactions+' imported</span>',recordsView(f));
+   if(view==="history")body=transactionEditor(f)+section("Transactions",'<span class="muted">'+r.transactions+' active · '+r.archived+' archived</span>',recordsView(f));
    else if(view==="bills")body=billsView(f);
    else if(view==="budgets")body=budgetView(f);
    else{
@@ -362,8 +541,14 @@
    const action=button.dataset.moneyAction;
    try{
      if(action==="pick-file")document.querySelector("#money-import-input")?.click();
+     if(action==="new-transaction"){view="history";showArchived=false;editId="new";dispatch();document.querySelector("#money-tx-editor")?.scrollIntoView({block:"start"});return;}
+     if(action==="edit-transaction"){view="history";showArchived=false;editId=button.dataset.id;dispatch();document.querySelector("#money-tx-editor")?.scrollIntoView({block:"start"});return;}
+     if(action==="cancel-edit"){editId=null;dispatch();return;}
+     if(action==="toggle-archived"){showArchived=!showArchived;page=0;editId=null;dispatch();return;}
+     if(action==="archive-transaction"){await archiveTransaction(button.dataset.id);return;}
+     if(action==="restore-transaction"){await restoreTransaction(button.dataset.id);return;}
      if(action==="cancel-preview"){pending=null;dispatch();}
-     if(action==="subview"){view=button.dataset.subview;page=0;dispatch();}
+     if(action==="subview"){view=button.dataset.subview;page=0;editId=null;dispatch();}
      if(action==="span"){span=Number(button.dataset.days)===14?14:7;dispatch();}
      if(action==="prev-page"){page=Math.max(0,page-1);dispatch();}
      if(action==="next-page"){page++;dispatch();}
@@ -388,8 +573,30 @@
      }
    }catch(err){alert("Money action failed: "+err.message);}
  });
+ document.addEventListener("input",event=>{
+   if(event.target?.id!=="money-search")return;
+   search=event.target.value;page=0;
+   const results=document.querySelector("#money-history-results");
+   if(results&&record)results.innerHTML=historyRows(record.data);
+ });
+ document.addEventListener("submit",async event=>{
+   if(event.target?.id!=="money-transaction-form")return;
+   event.preventDefault();
+   try{
+     const tx=getFormTx(event.target,record.data);
+     const next=structuredClone(record.data);
+     const index=editId==="new"?-1:next.transactions.findIndex(t=>t.id===editId);
+     if(editId!=="new"&&index<0)throw Error("The edited transaction was not found.");
+     if(index<0)next.transactions.push(tx);else next.transactions[index]=tx;
+     await commitLedger(next,index<0?"add transaction":"edit transaction");
+     editId=null;view="history";showArchived=false;dispatch();
+     alert("Transaction saved locally. Remember to back up Money to Firebase after edits.");
+   }catch(error){alert("Transaction not saved: "+error.message);}
+ });
  document.addEventListener("change",async event=>{
    if(event.target?.id==="money-month"){month=event.target.value;page=0;dispatch();return;}
+   if(event.target?.id==="money-kind"){kindFilter=event.target.value;page=0;dispatch();return;}
+   if(event.target?.id==="money-category"){categoryFilter=event.target.value;page=0;dispatch();return;}
    if(event.target?.id!=="money-import-input")return;
    const file=event.target.files?.[0];
    try{await onFile(file);}catch(err){alert("Finance preview failed: "+err.message);}

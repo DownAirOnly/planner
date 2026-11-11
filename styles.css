@@ -164,3 +164,44 @@ html,body{background:var(--bg)}
 .money-budget-row span{color:var(--muted)}
 .money-budget-row progress{width:100%;margin-top:8px;accent-color:var(--mint);height:7px}
 @media(max-width:390px){.money-stats{gap:6px}.money-stat{padding:10px}.money-stat strong{font-size:16px}}
+
+/* v28: Money transaction controls, archive, search and editing. */
+.money-history-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}
+.money-history-toolbar .button{font-size:12px}
+.money-history-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:0 0 13px}
+.money-history-filters label,.money-tx-field{display:flex;flex-direction:column;gap:6px;min-width:0;color:var(--muted);font-size:11px;font-weight:680}
+.money-history-filters input,.money-history-filters select,.money-tx-field input,.money-tx-field select,.money-tx-field textarea{
+  width:100%;min-width:0;box-sizing:border-box;border-radius:10px;background:var(--panel);color:var(--text);
+  border:1px solid var(--line);padding:11px;font-size:14px;font-weight:500;
+}
+.money-history-filters label:first-child{grid-column:1/-1}
+.money-history-count{display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:12px;margin:0 0 8px}
+.money-history-count strong{color:var(--text);font-size:12px}
+.money-tx-editor{border:1px solid #587f70;background:#172625;padding:14px;border-radius:16px;margin:14px 0 19px}
+.money-tx-editor>.section-head{margin-bottom:13px}
+.money-tx-editor>.section-head h2{font-size:17px}
+.money-tx-editor>.section-head button{border:0;background:none;color:var(--mint);font-size:12px}
+.money-transaction-form{display:grid;gap:14px}
+.money-tx-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.money-tx-field strong{font-size:14px;color:var(--text);padding:12px 0}
+.money-tx-wide textarea{min-height:70px;resize:vertical}
+.money-bank-lock{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:13px;background:var(--panel)}
+.money-bank-lock strong{font-size:12px;color:var(--mint)}
+.money-bank-lock p,.money-bank-lock small{display:block;font-size:11px;color:var(--muted);line-height:1.5;margin:7px 0 0;overflow-wrap:anywhere}
+.money-tx-actions{display:flex;gap:8px;flex-wrap:wrap}
+.money-tx-actions .button{font-size:12px}
+.money-archive-button{color:#e9bbab}
+.money-receipt-edit{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.money-receipt-edit summary{font-size:12px;font-weight:720}
+.money-receipt-edit p{color:var(--muted);font-size:11px}
+.money-receipt-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px;margin:9px 0;align-items:end}
+.money-receipt-row label{display:grid;gap:5px;font-size:11px;color:var(--muted);min-width:0}
+.money-receipt-row input{width:100%;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:9px;color:var(--text);padding:9px;font-size:12px;box-sizing:border-box}
+.money-receipt-row strong{white-space:nowrap;font-size:11px;padding-bottom:11px}
+.money-transaction-details .button{margin-top:9px;font-size:11px}
+.money-empty-results{padding:14px}
+@media(max-width:480px){
+ .money-tx-form-grid{grid-template-columns:1fr}
+ .money-receipt-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+ .money-receipt-row strong{grid-column:1/-1;padding:0}
+}
