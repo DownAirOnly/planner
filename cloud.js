@@ -9,7 +9,11 @@ const cloud={
   saveBackup:()=>Promise.reject(Error("Account not initialized.")),
   getFinanceManifest:()=>Promise.reject(Error("Account not initialized.")),
   saveFinanceBackup:()=>Promise.reject(Error("Account not initialized.")),
-  getFinanceBackup:()=>Promise.reject(Error("Account not initialized."))
+  getFinanceBackup:()=>Promise.reject(Error("Account not initialized.")),
+  getFinanceSyncManifest:()=>Promise.reject(Error("Account not initialized.")),
+  getFinanceSyncSnapshot:()=>Promise.reject(Error("Account not initialized.")),
+  publishFinanceSync:()=>Promise.reject(Error("Account not initialized.")),
+  watchFinanceSync:()=>{throw Error("Account not initialized.");}
 };
 window.CommandCloud=cloud;
 const notify=()=>window.dispatchEvent(new CustomEvent("command-cloud-changed"));
@@ -95,7 +99,7 @@ async function init(){
           transactions:data.transactions.length,
           rules:data.classificationRules.length,
           schedules:data.budgetPlan.schedules.length,
-          clientSavedAt:new Date().toISOString(),savedAt:storeApi.serverTimestamp()});
+          clientSavedAt:new Date().toISOString(),savedAt:storeApi.serverTimestamp()},{merge:true});
       });
       return revision;
     };
@@ -126,6 +130,141 @@ async function init(){
         data.budgetPlan.schedules?.length!==manifest.schedules)
         throw Error("Cloud finance counts differ from the saved manifest.");
       return {data,sha256:manifest.sha256,revision:manifest.revision,savedAt:manifest.clientSavedAt};
+    };
+
+    // The existing /finance/manifest and /financeChunks permissions also cover
+    // monthly sync. Its independent 'syncManifest' property means previous full
+    // manual recovery snapshots remain intact and readable.
+    const syncModel=()=>window.CommandMoneySyncModel;
+    const financeSyncError=message=>{
+      const error=new Error(message);
+      error.code="money-sync/conflict";
+      return error;
+    };
+    cloud.getFinanceSyncManifest=async()=>{
+      const raw=await cloud.getFinanceManifest();
+      const value=raw?.syncManifest||null;
+      if(value&&(!value.revision||value.format!=="command-money-sync-v1"||
+          !value.parts||!value.sha256))
+        throw Error("Unrecognized cloud Money sync format. Existing backups were not changed.");
+      return value;
+    };
+    const readSyncPart=async part=>{
+      if(!part||typeof part.rev!=="string"||!Array.isArray(part.ids)||
+         !part.ids.length||part.ids.length>200||typeof part.hash!=="string")
+        throw Error("Cloud Money part descriptor is invalid.");
+      const segments=[];
+      for(let i=0;i<part.ids.length;i+=10){
+        const requests=part.ids.slice(i,i+10).map(id=>{
+          if(typeof id!=="string"||!/^[a-zA-Z0-9_-]{1,180}$/.test(id))
+            throw Error("Cloud Money chunk ID is invalid.");
+          return storeApi.getDocFromServer(financeChunkRef(id));
+        });
+        const docs=await Promise.all(requests);
+        for(let j=0;j<docs.length;j++){
+          const snap=docs[j];
+          if(!snap.exists())throw Error("A required cloud Money chunk is missing.");
+          const v=snap.data();
+          if(v.revision!==part.rev||v.index!==i+j||typeof v.text!=="string")
+            throw Error("A cloud Money chunk did not match its manifest.");
+          segments.push(v.text);
+        }
+      }
+      const raw=segments.join("");
+      if(await digest(raw)!==part.hash)throw Error("Cloud Money part checksum mismatch.");
+      return JSON.parse(raw);
+    };
+    cloud.getFinanceSyncSnapshot=async(manifest)=>{
+      const snapshot=manifest||await cloud.getFinanceSyncManifest();
+      if(!snapshot)return null;
+      if(snapshot.format!=="command-money-sync-v1"||!snapshot.parts||
+         !snapshot.parts.meta||!snapshot.parts.months||typeof snapshot.parts.months!=="object")
+        throw Error("Cloud Money sync snapshot is invalid.");
+      const keys=Object.keys(snapshot.parts.months);
+      if(keys.length>400||keys.some(k=>!/^\\d{4}-(0[1-9]|1[0-2])$/.test(k)))
+        throw Error("Cloud Money month index is invalid.");
+      const meta=await readSyncPart(snapshot.parts.meta);
+      const months={};
+      for(let i=0;i<keys.length;i+=6){
+        const batch=keys.slice(i,i+6);
+        const values=await Promise.all(batch.map(k=>readSyncPart(snapshot.parts.months[k])));
+        batch.forEach((k,j)=>{months[k]=values[j];});
+      }
+      const data=syncModel().assemble(meta,months);
+      const wholeHash=await digest(JSON.stringify(data));
+      if(wholeHash!==snapshot.sha256||
+         data.transactions.length!==snapshot.transactions||
+         (data.archivedTransactions||[]).length!==snapshot.archived||
+         data.classificationRules.length!==snapshot.rules||
+         data.budgetPlan.schedules.length!==snapshot.schedules)
+        throw Error("Cloud Money sync verification failed; no local data was changed.");
+      return {data,sha256:wholeHash,revision:snapshot.revision,savedAt:snapshot.clientSavedAt};
+    };
+    cloud.publishFinanceSync=async(data,expectedHash,expectedRevision)=>{
+      const uid=auth.currentUser?.uid;
+      if(!uid)throw Error("Sign in before syncing Money.");
+      const serialized=JSON.stringify(data),fullHash=await digest(serialized);
+      if(fullHash!==expectedHash)throw Error("Local Money changed during synchronization.");
+      const ref=financeManifestRef();
+      const snap=await storeApi.getDocFromServer(ref);
+      const prev=snap.exists()?snap.data().syncManifest||null:null;
+      const actual=prev?.revision??null;
+      if(actual!==(expectedRevision??null))
+        throw financeSyncError("Money changed on another device. Automatic upload has stopped; review the conflict.");
+      if(prev?.sha256===fullHash)return prev;
+      const pieces=syncModel().partition(data);
+      const revision=crypto.randomUUID?.()||Date.now().toString(36);
+      const writes=[];
+      let pieceNumber=0;
+      const addPart=async(value,old)=>{
+        const raw=JSON.stringify(value),hash=await digest(raw);
+        if(old?.hash===hash&&old?.ids?.length)return old;
+        const chunks=Array.from(raw),size=24000,ids=[];
+        for(let i=0;i<chunks.length;i+=size){
+          const body=chunks.slice(i,i+size).join("");
+          if(new TextEncoder().encode(body).length>110000)
+            throw Error("Finance month contains an oversized chunk.");
+          const id="sync-"+revision+"-"+pieceNumber++;
+          ids.push(id);writes.push({id,index:ids.length-1,revision,text:body});
+        }
+        if(!ids.length||ids.length>200)throw Error("Money part exceeds the sync size limit.");
+        return {rev:revision,ids,hash};
+      };
+      const meta=await addPart(pieces.meta,prev?.parts?.meta);
+      const months={};
+      for(const [month,content] of Object.entries(pieces.months)){
+        months[month]=await addPart(content,prev?.parts?.months?.[month]);
+      }
+      if(writes.length>300)throw Error("Too many new finance chunks for one sync.");
+      // Immutable chunks written first. Their creation never changes which
+      // revision another device reads. The final manifest CAS is atomic.
+      for(let i=0;i<writes.length;i+=20){
+        const batch=storeApi.writeBatch(db);
+        for(const w of writes.slice(i,i+20)){
+          batch.set(financeChunkRef(w.id),{revision:w.revision,index:w.index,text:w.text});
+        }
+        await batch.commit();
+      }
+      if(auth.currentUser?.uid!==uid)throw Error("Signed-in account changed during Money sync.");
+      const manifest={format:"command-money-sync-v1",revision,sha256:fullHash,
+        parts:{meta,months},transactions:data.transactions.length,
+        archived:(data.archivedTransactions||[]).length,
+        rules:data.classificationRules.length,schedules:data.budgetPlan.schedules.length,
+        clientSavedAt:new Date().toISOString()};
+      await storeApi.runTransaction(db,async tx=>{
+        const old=await tx.get(ref),current=old.exists()?old.data().syncManifest||null:null;
+        if((current?.revision??null)!==(expectedRevision??null))
+          throw financeSyncError("Money was updated on another device. No changes were overwritten.");
+        tx.set(ref,{syncManifest:manifest},{merge:true});
+      });
+      return manifest;
+    };
+    cloud.watchFinanceSync=(callback)=>{
+      if(typeof callback!=="function")throw Error("Missing Money listener.");
+      return storeApi.onSnapshot(financeManifestRef(),{includeMetadataChanges:true},snap=>{
+        if(snap.metadata.fromCache||snap.metadata.hasPendingWrites)return;
+        callback(snap.exists()?snap.data().syncManifest||null:null,null);
+      },error=>callback(null,error));
     };
     authApi.onAuthStateChanged(auth,user=>{
       cloud.ready=true;cloud.status="ready";cloud.error="";
