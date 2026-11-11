@@ -119,7 +119,7 @@
  let record=null,error="",pending=null,verified=false,view="overview",span=7,month="all",page=0;
  let search="",kindFilter="all",categoryFilter="all",editId=null,showArchived=false,planEditor=null;
  let classEditing=null,classReview=false;
- let csvMode="bank",csvPending=null;
+ let csvMode="bank",csvPending=null,insightPeriod="30d",reviewFilter="all";
  function read(){
    const raw=localStorage.getItem(KEY);
    if(!raw){record=null;return;}
@@ -327,6 +327,8 @@
    if(month!=="all")rows=rows.filter(t=>(t.purchaseDate||t.date).startsWith(month));
    if(kindFilter!=="all")rows=rows.filter(t=>t.kind===kindFilter);
    if(categoryFilter!=="all")rows=rows.filter(t=>t.category===categoryFilter);
+   if(reviewFilter==="uncategorized")rows=rows.filter(t=>!t.category||t.category.toLowerCase()==="uncategorized");
+   else if(reviewFilter==="needs-review")rows=rows.filter(t=>window.CommandMoneyBankImport.financeReviewFlags(t).length>0);
    const q=search.trim().toLocaleLowerCase();
    if(q)rows=rows.filter(t=>[
      t.description,t.merchant,t.category,t.subcategory,t.bankDescription,
@@ -363,6 +365,7 @@
      '<label>Month<select id="money-month"><option value="all">All history</option>'+
      dates.map(m=>selectOption(m,month,m)).join("")+'</select></label>'+
      '<label>Type<select id="money-kind">'+[["all","All types"],["expense","Expenses"],["income","Income"],["transfer","Transfers"]].map(([k,label])=>selectOption(k,kindFilter,label)).join("")+'</select></label>'+
+     '<label>Review<select id="money-review-filter">'+[["all","All records"],["needs-review","Needs review"],["uncategorized","Uncategorized"]].map(([k,label])=>selectOption(k,reviewFilter,label)).join("")+'</select></label>'+
      '<label>Category<select id="money-category">'+selectOption("all",categoryFilter,"All categories")+
      allCats.map(k=>selectOption(k,categoryFilter,k)).join("")+'</select></label></div>'+
      '<div id="money-history-results">'+historyRows(f)+'</div>';
@@ -775,11 +778,12 @@
      (record.editedAt?'<p class="money-help">Last local Money change: '+e(record.editedAt.slice(0,16).replace("T"," "))+'. Back up again after editing.</p>':'')+
      (r.archived?'<p class="money-help">'+r.archived+' archived transactions retained for recovery.</p>':'')
    );
-   const nav='<div class="money-subnav">'+[["overview","Overview"],["history","History"],["bills","Bills"],["budgets","Budgets"],["import","Import"]].map(([key,name])=>
+   const nav='<div class="money-subnav">'+[["overview","Overview"],["history","History"],["bills","Bills"],["budgets","Budgets"],["insights","Insights"],["import","Import"]].map(([key,name])=>
      '<button class="'+(view===key?'active':'')+'" data-money-action="subview" data-subview="'+key+'">'+name+'</button>').join("")+'</div>';
    let body="";
    if(view==="history")body=transactionEditor(f)+section("Transactions",'<span class="muted">'+r.transactions+' active · '+r.archived+' archived</span>',recordsView(f));
    else if(view==="import")body=csvView();
+   else if(view==="insights")body=window.CommandMoneyInsightsUI.render(f,insightPeriod,day());
    else if(view==="bills")body=billsView(f);
    else if(view==="budgets")body=budgetView(f)+renderClassification(f);
    else{
@@ -820,6 +824,8 @@
    if(!button)return;
    const action=button.dataset.moneyAction;
    try{
+     if(action==="insights-uncategorized"){view="history";reviewFilter="uncategorized";page=0;dispatch();return;}
+     if(action==="insights-needs-review"){view="history";reviewFilter="needs-review";page=0;dispatch();return;}
      if(action==="csv-mode"){csvMode=button.dataset.csvMode;csvPending=null;dispatch();return;}
      if(action==="csv-cancel"){csvPending=null;dispatch();return;}
      if(action==="csv-review-unresolved"){csvReviewSaved();return;}
@@ -945,6 +951,8 @@
        csvChoose(row,choice,receipt,category,note);return;
      }catch(error){alert("Bank review choice: "+error.message);return;}
    }
+   if(target?.id==="money-insights-period"){insightPeriod=target.value;dispatch();return;}
+   if(target?.id==="money-review-filter"){reviewFilter=target.value;page=0;dispatch();return;}
    if(target?.id==="money-month"){month=target.value;page=0;dispatch();return;}
 
    if(event.target?.id==="money-kind"){kindFilter=event.target.value;page=0;dispatch();return;}

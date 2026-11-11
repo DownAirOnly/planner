@@ -296,3 +296,44 @@ html,body{background:var(--bg)}
 .money-class-proposal small{color:var(--muted);font-size:11px;display:block;line-height:1.5;margin-top:3px;overflow-wrap:anywhere}
 .money-class-review>.money-tx-actions{margin-top:10px}
 .money-classification .money-summary-list{margin-top:7px}
+
+/* v33 — finance review workflows and Insights */
+.money-subnav{display:flex;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;gap:4px;scrollbar-width:none}
+.money-subnav::-webkit-scrollbar{display:none}
+.money-subnav button{flex:0 0 auto;min-width:67px;padding:10px 9px}
+.money-csv-tabs{display:flex;gap:5px;overflow-x:auto;margin:11px 0}
+.money-csv-tabs button{flex:0 0 auto;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--muted);font-size:11px}
+.money-csv-tabs button.active{background:#2f5549;color:var(--mint)}
+.money-csv-form{display:grid;gap:12px}
+.money-csv-form .money-plan-field textarea{min-height:115px;resize:vertical;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px;color:var(--text);font:12px/1.55 ui-monospace,monospace;box-sizing:border-box;width:100%}
+.money-csv-actions{display:flex;gap:8px;flex-wrap:wrap;margin:11px 0}
+.money-csv-actions .button{font-size:12px}
+.money-import-preview{border:1px solid #527a6d;border-radius:13px;padding:12px;margin:14px 0;background:#162621}
+.money-import-preview .section-head h2{font-size:16px}
+.money-import-preview .section-head button{color:var(--mint);background:none;border:0;font-size:12px}
+.money-import-metrics{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.money-import-metrics span{font-size:11px;border:1px solid var(--line);border-radius:999px;padding:6px 9px;background:var(--panel)}
+.money-import-row-list,.money-bank-list{max-height:510px;overflow:auto;border:1px solid var(--line);border-radius:11px;margin:9px 0}
+.money-import-row{padding:10px;border-bottom:1px solid var(--line)}
+.money-import-row strong{display:block;font-size:12px}
+.money-import-row small{font-size:11px;color:var(--muted)}
+.money-bank-row{padding:12px;border-bottom:1px solid var(--line);display:grid;gap:10px}
+.money-bank-row:last-child,.money-import-row:last-child{border-bottom:0}
+.money-bank-info strong{display:block;font-size:12px}
+.money-bank-info small{display:block;color:var(--muted);font-size:11px;margin-top:4px}
+.money-bank-warning{display:block;color:#e5ba80;font-size:11px;line-height:1.5;margin:6px 0}
+.money-bank-match{border-left:2px solid #517c70;padding-left:11px;display:grid;gap:9px}
+.money-bank-match .money-plan-field input{max-width:100%}
+.money-import-preview .money-warning p{margin:5px 0;font-size:11px}
+.money-insights-filter{margin:11px 0}
+.money-insights-filter select{width:100%;padding:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;color:var(--text)}
+.money-insights-warnings{display:flex;flex-wrap:wrap;gap:7px;margin:12px 0}
+.money-insights-warnings .button{font-size:11px}
+.money-insights-ranking{background:var(--panel);border-radius:12px;border:1px solid var(--line);overflow:hidden}
+.money-insight-row{padding:10px 12px;border-bottom:1px solid var(--line)}
+.money-insight-row:last-child{border-bottom:0}
+.money-insight-row>div{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.money-insight-row strong{font-size:12px;overflow-wrap:anywhere}
+.money-insight-row small{color:var(--muted);text-align:right;font-size:10px}
+.money-insight-row progress{width:100%;height:6px;margin-top:7px;accent-color:var(--mint)}
+@media(max-width:450px){.money-insight-row>div{align-items:flex-start}.money-insight-row small{min-width:90px}}

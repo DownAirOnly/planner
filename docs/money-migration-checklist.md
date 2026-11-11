@@ -85,3 +85,13 @@ A manual backup is still recommended before opting into automatic Money sync.
 - Existing linked bill dates outside the nearby selection range are kept accessible instead of being dropped. Another transaction linked to the same occurrence triggers a warning before saving.
 - All changes continue through the validated ledger write, local recovery, and optional monthly sync; they never alter Everyday.
 - Remaining Everyday parity gaps include native Bank of America CSV import/enrichment workflows and receipt CSV import, so removing Everyday finance remains premature.
+
+## v33 — Additional Money parity tools
+
+- Bank of America CSV importer uses Everyday's original statement parsing and stable bank-row IDs. Includes file or pasted CSV, account/statement labels, exact-duplicate skips, expense/credit/transfer hints, receipt matching, new records, and persistent unresolved-bank-row review.
+- Receipt and universal finance CSV support `transaction` / `purchase` / `expense` / `income` / `transfer` and `receiptItem` rows with purchaseId associations, item-total validation and content-derived stable IDs. Other sections of an Everyday universal CSV are **rejected**, not imported into Command.
+- Enrichment CSV uses the original Everyday ID-anchored parser and expected-value checks; bank source facts stay immutable and proposed changes are shown before approval.
+- All import previews are compared against the original Money checksum. A stale review is blocked; source records stay available for local recovery.
+- Spending insights now support 30/90 days, all history, monthly filters, top categories/merchants, separate incoming/outgoing transfers, and review flags.
+- Importing or applying records remains an explicit local transaction; optional Firebase monthly sync and manual backups are unchanged. No original personal bank data is committed to the repo.
+- Real-device testing with an actual BofA CSV and receipt/clarification CSV remains required. Do not retire Money from Everyday until all parity acceptance checks pass.
