@@ -48,7 +48,7 @@ async function init(){
       if(new TextEncoder().encode(contents).length>850000)throw Error("Data exceeds the initial cloud backup size limit. Export a JSON backup.");
       const ref=backupRef(),revision=crypto.randomUUID?.()||Date.now().toString(36);
       await storeApi.runTransaction(db,async tx=>{
-        const prior=await tx.get(ref),actual=prior.exists()?prior.data().revision:null;
+        const prior=await tx.get(ref),actual=prior.exists()?(prior.data().revision??null):null;
         if(actual!==(expectedRevision??null))throw Error("Cloud backup changed since it was checked. Review it again.");
         tx.set(ref,{revision,schemaVersion:5,clientSavedAt:new Date().toISOString(),savedAt:storeApi.serverTimestamp(),backup:JSON.parse(contents)});
       });
