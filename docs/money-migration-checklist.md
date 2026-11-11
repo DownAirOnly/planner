@@ -63,3 +63,16 @@
 - Other browser tabs cannot silently replace a newer local Money record; the existing checksum guard remains in place.
 - Full manual Firebase backups are kept separately. The immutable monthly chunks may accumulate over revisions; a future retention/cleanup policy is required before heavy long-term usage.
 - Keep Everyday's Money data and independent JSON exports until edit parity and cross-device recovery have been demonstrated.
+
+## v31 verification record
+
+Focused in-memory checks completed:
+- Month-partitioned round-trip preserves the exact finance JSON.
+- Changing February leaves January's immutable chunk IDs untouched.
+- A stale expected revision is rejected; no new active manifest is published.
+- Monthly sync and manual full Firebase backups coexist under the already-published rules.
+- Opt-in from matching local/manual copies succeeds; local edits upload with a delay.
+- Two divergent device revisions pause syncing and retain the local copy.
+- These checks do **not** replace an iPhone-to-iPhone sign-in, upload, restore and conflict test.
+
+A manual backup is still recommended before opting into automatic Money sync.
