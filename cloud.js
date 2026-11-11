@@ -93,7 +93,7 @@ async function init(){
       }
       await storeApi.runTransaction(db,async tx=>{
         const ref=financeManifestRef(),prior=await tx.get(ref);
-        const actual=prior.exists()?prior.data().revision:null;
+        const actual=prior.exists()?(prior.data().revision??null):null;
         if(actual!==(expectedRevision??null))throw Error("Cloud finance was updated on another device. Refresh before replacing it.");
         tx.set(ref,{revision,chunks:chunkIds,sha256:hash,
           transactions:data.transactions.length,
