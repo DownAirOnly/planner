@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 30;
+  const APP_VERSION = 31;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -188,6 +188,12 @@
   function moneyView(){return window.CommandMoney?.render?.()||'<section class="section"><h2>Money</h2><p>Finance migration is not initialized.</p></section>';}
   window.addEventListener("command-money-updated",()=>{
     if(state.view==="money"&&!overlay.firstChild)render();
+  });
+  window.addEventListener("command-money-sync-status",()=>{
+    // Updating only the sync indicator prevents interrupting a transaction
+    // editor or a partially completed budget form.
+    const node=document.querySelector("#money-sync-panel");
+    if(node&&window.CommandMoneySync)node.innerHTML=window.CommandMoneySync.renderControls();
   });
   window.addEventListener("command-cloud-changed",()=>{
     if(state.view==="money"&&!overlay.firstChild)render();

@@ -265,3 +265,17 @@ html,body{background:var(--bg)}
  .money-plan-schedule{grid-template-columns:minmax(0,1fr) auto}
  .money-plan-schedule button{grid-column:2}
 }
+
+/* v31: quiet, account-scoped Money synchronization state */
+.money-sync-card{margin:3px 0 14px;border:1px solid var(--line);border-radius:14px;
+  background:var(--panel);padding:13px 14px}
+.money-sync-card.conflicted{border-color:#a47758}
+.money-sync-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.money-sync-head strong{font-size:13px}
+.money-sync-head span{font-size:11px;color:var(--mint);font-weight:720}
+.money-sync-card.conflicted .money-sync-head span{color:#e8b787}
+.money-sync-card>p{font-size:12px;line-height:1.48;color:var(--muted);margin:8px 0}
+.money-sync-card>small{display:block;font-size:10px;color:var(--muted);line-height:1.45;margin-top:9px}
+.money-sync-actions{display:flex;flex-wrap:wrap;gap:7px}
+.money-sync-actions:empty{display:none}
+.money-sync-actions>.button{font-size:11px;min-height:34px}

@@ -51,3 +51,15 @@
 - Manual end-of-day available cash supports a 35-day forward projection of future outstanding scheduled income/expenses; it never double-counts bank transactions as changes to that cash balance.
 - Cash-flow overview keeps 7-/14-day controls. These are plans, not live bank balances.
 - All edits reuse v29 local recovery/checksum/write protection. Cloud copies update **only** when the user explicitly backs up and verifies.
+
+## v31 — optional, conflict-protected month-delta synchronization
+
+- Automatic Money synchronization is **off by default**. Sign in, make sure Money and its existing manual Firebase snapshot match, then click **Enable automatic sync** on the Money tab.
+- Initial pairing verifies every field against the existing full cloud snapshot. The monthly sync index is created only after that comparison. Enabling on another device requires matching data or an explicit **Restore synced copy** (with local recovery).
+- Subsequent edits wait briefly, upload only changed month blocks or budget/settings metadata, publish a compare-and-swap revision, read back the exact cloud snapshot, and compare its SHA-256 and all fields.
+- Firestore `users/{uid}/finance/manifest` gains a separate `syncManifest` field; existing `revision/chunks/sha256` manual backup fields are retained. Both features reuse existing `financeChunks` create/read rules, **so the published v25 rules need no change**.
+- Listeners ignore cached/offline Firestore snapshots; a fresh server revision is compared on reconnection and app reopen. The iPhone PWA cannot synchronize while force-closed or suspended.
+- If local and cloud have diverged since the last common revision, **automatic syncing pauses** instead of overwriting or guessing at a merge. The user can export their local JSON and explicitly restore the verified cloud copy, preserving the previous local state for recovery.
+- Other browser tabs cannot silently replace a newer local Money record; the existing checksum guard remains in place.
+- Full manual Firebase backups are kept separately. The immutable monthly chunks may accumulate over revisions; a future retention/cleanup policy is required before heavy long-term usage.
+- Keep Everyday's Money data and independent JSON exports until edit parity and cross-device recovery have been demonstrated.

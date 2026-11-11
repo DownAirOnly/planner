@@ -1,4 +1,4 @@
-import {firebaseConfig} from "./firebase-config.js?v=24";
+import {firebaseConfig} from "./firebase-config.js?v=31";
 
 const cloud={
   configured:!!(firebaseConfig&&firebaseConfig.apiKey&&firebaseConfig.authDomain&&firebaseConfig.projectId&&firebaseConfig.appId),
@@ -255,7 +255,9 @@ async function init(){
         const old=await tx.get(ref),current=old.exists()?old.data().syncManifest||null:null;
         if((current?.revision??null)!==(expectedRevision??null))
           throw financeSyncError("Money was updated on another device. No changes were overwritten.");
-        tx.set(ref,{syncManifest:manifest},{merge:true});
+        // Replace the entire sync manifest, including deleted month keys, while
+        // retaining the separate manual-backup fields on this document.
+        tx.set(ref,{syncManifest:manifest},{mergeFields:["syncManifest"]});
       });
       return manifest;
     };
