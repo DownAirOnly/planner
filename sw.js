@@ -1,5 +1,5 @@
-const CACHE_NAME="command-v31-monthly-money-sync-release";
-const FILES=["./","./index.html","./styles.css","./app.js","./money-planning.js","./money-bills-ui.js","./money.js","./money-sync-model.js","./money-sync.js","./cloud.js","./firebase-config.js","./timekeeping.js","./schedule.js","./schedule.css","./schedule-import.js","./icons.svg","./icon.svg","./apple-touch-icon-v9.png","./manifest.webmanifest"];
+const CACHE_NAME="command-v32-money-parity";
+const FILES=["./","./index.html","./styles.css","./app.js","./money-planning.js","./money-bills-ui.js","./money-classification.js","./money.js","./money-sync-model.js","./money-sync.js","./cloud.js","./firebase-config.js","./timekeeping.js","./schedule.js","./schedule.css","./schedule-import.js","./icons.svg","./icon.svg","./apple-touch-icon-v9.png","./manifest.webmanifest"];
 self.addEventListener("install",(event)=>{
   event.waitUntil(caches.open(CACHE_NAME).then((cache)=>cache.addAll(FILES.map((p)=>new URL(p,self.registration.scope).toString()))).then(()=>self.skipWaiting()));
 });

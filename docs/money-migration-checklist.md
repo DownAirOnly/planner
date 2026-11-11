@@ -76,3 +76,12 @@ Focused in-memory checks completed:
 - These checks do **not** replace an iPhone-to-iPhone sign-in, upload, restore and conflict test.
 
 A manual backup is still recommended before opting into automatic Money sync.
+
+## v32 — Classification and bill matching parity
+
+- The imported merchant classification rules are now editable and can be added or removed in Money → Budgets.
+- Rule suggestions are previewed per transaction, unchecked by default, and applied **only** for the explicitly selected IDs. Conflicting rules cannot silently override categories; original bank facts are unchanged.
+- Money → History → Edit transaction now provides an optional nearby scheduled-bill selector. Linking a transaction preserves its original bank fields and sets its billKey only after user action; unlinking restores the normal pending-bill calculation.
+- Existing linked bill dates outside the nearby selection range are kept accessible instead of being dropped. Another transaction linked to the same occurrence triggers a warning before saving.
+- All changes continue through the validated ledger write, local recovery, and optional monthly sync; they never alter Everyday.
+- Remaining Everyday parity gaps include native Bank of America CSV import/enrichment workflows and receipt CSV import, so removing Everyday finance remains premature.

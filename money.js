@@ -118,6 +118,7 @@
  }
  let record=null,error="",pending=null,verified=false,view="overview",span=7,month="all",page=0;
  let search="",kindFilter="all",categoryFilter="all",editId=null,showArchived=false,planEditor=null;
+ let classEditing=null,classReview=false;
  function read(){
    const raw=localStorage.getItem(KEY);
    if(!raw){record=null;return;}
@@ -199,6 +200,18 @@
      original.items.map((i,n)=>'<div class="money-receipt-row"><label>Item <input name="receipt-name-'+n+'" maxlength="120" value="'+e(i.name)+'"></label>'+
        '<label>Category <input name="receipt-category-'+n+'" maxlength="80" value="'+e(i.category)+'"></label>'+
        '<strong>'+cents(i.amountCents)+'</strong></div>').join("")+'</details>':"";
+   const billDates=(d.kind==="expense"&&f.budgetPlan.schedules.length)?
+     window.CommandMoneyPlanning.occurrences(f.budgetPlan,plus(d.purchaseDate||d.date,-60),plus(d.purchaseDate||d.date,60),f.transactions)
+       .filter(x=>x.kind==="expense"): [];
+   const existingLink=String(d.billKey||"");
+   const choices=billDates.map(x=>selectOption(x.id+"|"+x.date,existingLink,x.name+" · "+x.date+" · "+cents(x.amountCents).replace("−","")));
+   if(existingLink&&!billDates.some(x=>x.id+"|"+x.date===existingLink))
+     choices.unshift(selectOption(existingLink,existingLink,"Saved link (outside nearby dates): "+existingLink));
+   const billLink=d.kind==="expense"?
+     '<label class="money-tx-field money-tx-wide"><span>Scheduled bill covered by this transaction</span>'+
+     '<select name="billKey">'+selectOption("","", "No scheduled bill")+choices.join("")+'</select>'+
+     '<small>Link a purchase to its actual scheduled bill so cash-flow projections do not count it twice. Bank source fields are unchanged.</small></label>':
+     (existingLink?'<p class="money-warning">This record currently has a bill link but is not an expense. Change it to an expense or unlink it to correct the record.</p>':"");
    return '<section class="money-tx-editor" id="money-tx-editor"><div class="section-head"><h2>'+(original?"Edit transaction":"New transaction")+'</h2>'+
      '<button data-money-action="cancel-edit">Cancel</button></div>'+
      bankNotice+'<form id="money-transaction-form" class="money-transaction-form">'+
@@ -215,11 +228,10 @@
      (bank?"":formInput("Payment account","accountLabel",d.accountLabel||"","text",'maxlength="120"'))+
      formInput("Purchase date (optional)","purchaseDate",d.purchaseDate||"","date")+
      formInput("Time (optional)","time",d.time||"","time")+
-     '</div>'+catList+
+     '</div>'+catList+billLink+
      '<label class="money-tx-field money-tx-wide"><span>Note</span><textarea name="note" rows="2" maxlength="500">'+e(d.note||"")+'</textarea></label>'+
      '<label class="money-tx-field money-tx-wide"><span>Receipt notes</span><textarea name="itemization" rows="2" maxlength="3000">'+e(d.itemization||"")+'</textarea></label>'+
      receipt+
-     (original?.billKey?'<p class="money-help">Linked bill: '+e(original.billKey)+' (preserved)</p>':'')+
      '<div class="money-tx-actions"><button class="button" type="submit">Save transaction</button>'+
      (original?'<button type="button" class="button secondary money-archive-button" data-money-action="archive-transaction" data-id="'+e(original.id)+'">Archive transaction</button>':'')+
      '</div></form></section>';
@@ -253,6 +265,15 @@
      ...item,name:String(v["receipt-name-"+n]||"").trim(),
      category:String(v["receipt-category-"+n]||"").trim()
    }));
+   const billLink=String(v.billKey||"").trim();
+   if(billLink){
+     if(kind!=="expense")throw Error("Only expenses can be linked to scheduled bills.");
+     const split=billLink.lastIndexOf("|"),id=billLink.slice(0,split),due=billLink.slice(split+1);
+     const scheduled=f.budgetPlan.schedules.find(x=>x.id===id&&x.kind==="expense");
+     if(!scheduled||!iso(due)||(!window.CommandMoneyPlanning.occurs(scheduled,due)&&billLink!==original?.billKey))
+       throw Error("This scheduled bill no longer exists. Refresh the editor or unlink it.");
+     tx.billKey=billLink;
+   }else delete tx.billKey;
    return tx;
  }
  async function commitLedger(next,action){
@@ -466,7 +487,7 @@
  }
 
  function isSyncEditing(){
-   return editId!==null||planEditor!==null||pending!==null;
+   return editId!==null||planEditor!==null||pending!==null||classEditing!==null||classReview;
  }
  // Called only by the opt-in sync coordinator after a complete, checksum-
  // verified cloud read. Saved local data and the open editor are checked again
@@ -495,6 +516,62 @@
    error="";verified=true;editId=null;planEditor=null;pending=null;
    dispatch();
    return true;
+ }
+
+ function renderClassification(f){
+   const model=window.CommandMoneyClassification;
+   const proposals=classReview?model.proposals(f.transactions,f.classificationRules):[];
+   return model.render(f,classEditing,classReview,proposals);
+ }
+ function classStart(id){
+   classEditing=id;classReview=false;view="budgets";dispatch();
+   document.querySelector("#money-classification-editor")?.scrollIntoView({block:"nearest"});
+ }
+ async function classSave(form){
+   if(!record||!verified)throw Error("Money must be verified before changing classification rules.");
+   const v=Object.fromEntries(new FormData(form).entries());
+   const id=String(v.id||"");
+   const previous=id?record.data.classificationRules.find(x=>x.id===id):null;
+   if(id&&!previous)throw Error("This classification rule is no longer available.");
+   const matchText=String(v.matchText||"").trim();
+   const rule={...(previous||{}),id:previous?.id||makeId(),
+     name:String(v.name||"").trim(),matchText,
+     matchField:String(v.matchField||"any"),
+     category:String(v.category||"").trim(),
+     subcategory:String(v.subcategory||"").trim(),
+     merchant:String(v.merchant||"").trim(),
+     enabled:v.enabled!=="no"};
+   if(String(v.amount||"").trim())rule.amountCents=moneyAmount(v.amount);
+   else delete rule.amountCents;
+   window.CommandMoneyClassification.validateRule(rule);
+   const next=structuredClone(record.data);
+   if(previous)next.classificationRules=next.classificationRules.map(x=>x.id===id?rule:x);
+   else{
+     if(next.classificationRules.length>=300)throw Error("Classification rule limit reached.");
+     next.classificationRules.push(rule);
+   }
+   await commitLedger(next,previous?"edit classification rule":"add classification rule");
+   classEditing=null;classReview=false;dispatch();
+ }
+ async function classDelete(id){
+   const old=record?.data.classificationRules.find(x=>x.id===id);
+   if(!old)throw Error("Classification rule not found.");
+   if(!confirm("Remove the rule '"+old.name+"'? Existing transaction categories will not change."))return;
+   const next=structuredClone(record.data);
+   next.classificationRules=next.classificationRules.filter(r=>r.id!==id);
+   await commitLedger(next,"remove classification rule");
+   classEditing=null;classReview=false;dispatch();
+ }
+ async function classApply(){
+   if(!record||!verified)throw Error("Money must be verified to apply classification changes.");
+   const checked=[...document.querySelectorAll(".money-class-review input[data-class-selected]:checked")].map(x=>x.value);
+   if(!checked.length)throw Error("Select at least one transaction to update.");
+   if(new Set(checked).size!==checked.length)throw Error("Duplicate transaction selected.");
+   const proposals=window.CommandMoneyClassification.proposals(record.data.transactions,record.data.classificationRules);
+   const next=window.CommandMoneyClassification.apply(record.data,proposals,checked);
+   if(!confirm("Apply "+checked.length+" reviewed classification update"+(checked.length===1?"":"s")+"? Original bank amounts and descriptions will not change."))return;
+   await commitLedger(next,"apply reviewed classification suggestions");
+   classReview=true;classEditing=null;dispatch();
  }
  function cloudRecord(){
    const cloud=window.CommandCloud;
@@ -591,7 +668,7 @@
    let body="";
    if(view==="history")body=transactionEditor(f)+section("Transactions",'<span class="muted">'+r.transactions+' active · '+r.archived+' archived</span>',recordsView(f));
    else if(view==="bills")body=billsView(f);
-   else if(view==="budgets")body=budgetView(f);
+   else if(view==="budgets")body=budgetView(f)+renderClassification(f);
    else{
      const p=summary(f,span),balance=f.budgetPlan.balanceCents;
      const forecast=window.CommandMoneyPlanning.forecast(f,day(),35);
@@ -630,6 +707,13 @@
    if(!button)return;
    const action=button.dataset.moneyAction;
    try{
+     if(action==="class-new"){classStart("new");return;}
+     if(action==="class-edit"){classStart(button.dataset.id);return;}
+     if(action==="class-cancel"){classEditing=null;dispatch();return;}
+     if(action==="class-review"){classEditing=null;classReview=true;dispatch();return;}
+     if(action==="class-hide"){classReview=false;dispatch();return;}
+     if(action==="class-apply"){await classApply();return;}
+     if(action==="class-delete"){await classDelete(button.dataset.id);return;}
      if(action==="plan-add-schedule"){planEditorStart("schedule");return;}
      if(action==="plan-edit-schedule"){planEditorStart("schedule",button.dataset.id);return;}
      if(action==="plan-add-limit"){planEditorStart("limit");return;}
@@ -651,7 +735,7 @@
      if(action==="archive-transaction"){await archiveTransaction(button.dataset.id);return;}
      if(action==="restore-transaction"){await restoreTransaction(button.dataset.id);return;}
      if(action==="cancel-preview"){pending=null;dispatch();}
-     if(action==="subview"){view=button.dataset.subview;page=0;editId=null;planEditor=null;dispatch();}
+     if(action==="subview"){view=button.dataset.subview;page=0;editId=null;planEditor=null;classEditing=null;classReview=false;dispatch();}
      if(action==="span"){span=Number(button.dataset.days)===14?14:7;dispatch();}
      if(action==="prev-page"){page=Math.max(0,page-1);dispatch();}
      if(action==="next-page"){page++;dispatch();}
@@ -683,6 +767,11 @@
    if(results&&record)results.innerHTML=historyRows(record.data);
  });
  document.addEventListener("submit",async event=>{
+   if(event.target?.id==="money-class-form"){
+     event.preventDefault();
+     try{await classSave(event.target);}catch(error){alert("Classification rule not saved: "+error.message);}
+     return;
+   }
    if(event.target?.id==="money-plan-form"){
      event.preventDefault();
      try{await savePlanForm(event.target);}
@@ -697,6 +786,8 @@
      const index=editId==="new"?-1:next.transactions.findIndex(t=>t.id===editId);
      if(editId!=="new"&&index<0)throw Error("The edited transaction was not found.");
      if(index<0)next.transactions.push(tx);else next.transactions[index]=tx;
+     if(tx.billKey&&next.transactions.some(t=>t.id!==tx.id&&t.billKey===tx.billKey))
+       if(!confirm("Another transaction is already linked to this scheduled bill. Keep both links? This could conceal spending in your cash-flow summary."))return;
      await commitLedger(next,index<0?"add transaction":"edit transaction");
      editId=null;view="history";showArchived=false;dispatch();
      alert("Transaction saved locally. Remember to back up Money to Firebase after edits.");

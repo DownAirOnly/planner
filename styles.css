@@ -279,3 +279,20 @@ html,body{background:var(--bg)}
 .money-sync-actions{display:flex;flex-wrap:wrap;gap:7px}
 .money-sync-actions:empty{display:none}
 .money-sync-actions>.button{font-size:11px;min-height:34px}
+
+/* v32: Reviewed categorization and explicit bill matching */
+.money-tx-field small{font-size:11px;font-weight:450;line-height:1.48;color:var(--muted)}
+.money-class-actions{display:flex;gap:8px;margin:7px 0 13px;flex-wrap:wrap}
+.money-class-actions .button,.money-classification .money-detail-row button{font-size:12px}
+.money-classification .money-detail-row button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:8px}
+.money-class-review{margin:12px 0 16px;background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:12px}
+.money-class-review h3{font-size:14px;margin:0 0 6px}
+.money-class-results{max-height:430px;overflow:auto;border:1px solid var(--line);border-radius:11px;margin:12px 0}
+.money-class-proposal{display:flex;gap:11px;align-items:flex-start;border-bottom:1px solid var(--line);padding:12px;cursor:pointer}
+.money-class-proposal:last-child{border-bottom:0}
+.money-class-proposal input{flex:none;width:19px;height:19px;accent-color:var(--mint);margin-top:2px}
+.money-class-proposal span{display:block;min-width:0}
+.money-class-proposal strong{font-size:12px;display:block}
+.money-class-proposal small{color:var(--muted);font-size:11px;display:block;line-height:1.5;margin-top:3px;overflow-wrap:anywhere}
+.money-class-review>.money-tx-actions{margin-top:10px}
+.money-classification .money-summary-list{margin-top:7px}

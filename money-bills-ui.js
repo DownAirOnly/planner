@@ -126,10 +126,7 @@
    return editor(finance,editing)+section("Cash position","",cash)+
      section("Monthly limits",'<button class="button" data-money-action="plan-add-limit">+ Limit</button>',
        '<p class="money-help">Spending in '+e(month)+'. Receipt items are allocated to their categories; receipt adjustments are accounted for separately.</p>'+
-       '<div class="money-budget-list">'+(list||'<p class="money-help">No limits configured.</p>')+'</div>')+
-     section("Classification rules",'<span class="muted">'+finance.classificationRules.length+' saved</span>',
-       '<div class="money-summary-list">'+finance.classificationRules.map(r=>
-       '<div class="money-detail-row"><strong>'+e(r.name)+'</strong><small>'+e(r.category)+' · '+e(r.matchText)+'</small></div>').join("")+'</div>');
+       '<div class="money-budget-list">'+(list||'<p class="money-help">No limits configured.</p>')+'</div>');
  }
  window.CommandMoneyBillsUI={bills,budgets,editor};
 })();
