@@ -464,6 +464,38 @@
    await commitLedger(next,"update "+kind);
    planEditor=null;dispatch();
  }
+
+ function isSyncEditing(){
+   return editId!==null||planEditor!==null||pending!==null;
+ }
+ // Called only by the opt-in sync coordinator after a complete, checksum-
+ // verified cloud read. Saved local data and the open editor are checked again
+ // at commit time; a remote snapshot never discards unsaved edits.
+ async function applySyncedData(snapshot,expectedLocalHash){
+   if(isSyncEditing())throw Error("Close your open Money editor before applying cloud changes.");
+   const raw=localStorage.getItem(KEY);
+   const current=raw?JSON.parse(raw):null;
+   if((current?.sha256??null)!==(expectedLocalHash??null))
+     throw Error("Money changed locally while downloading. Nothing was replaced.");
+   const checked=validateFile({format:FORMAT,section:"finances",data:snapshot?.data});
+   const digest=await sha(checked.finance);
+   if(digest!==snapshot.sha256)throw Error("Synced Money checksum did not match.");
+   if((localStorage.getItem(KEY)||null)!==raw)
+     throw Error("Money changed in another tab. Cloud restore was stopped.");
+   const stored={format:"command-finance-v1",sourceFormat:FORMAT,
+     importedAt:current?.importedAt||new Date().toISOString(),
+     sourceFilename:current?.sourceFilename||"Verified Google Money sync",
+     sha256:digest,data:checked.finance,syncedAt:new Date().toISOString()};
+   const serialized=JSON.stringify(stored);
+   if(raw)localStorage.setItem(RECOVERY,raw);
+   localStorage.setItem(KEY,serialized);
+   if(localStorage.getItem(KEY)!==serialized||await sha(JSON.parse(serialized).data)!==digest)
+     throw Error("Cloud Money restore did not verify. The previous copy was preserved.");
+   record={...stored,report:checked.report};
+   error="";verified=true;editId=null;planEditor=null;pending=null;
+   dispatch();
+   return true;
+ }
  function cloudRecord(){
    const cloud=window.CommandCloud;
    if(!cloud?.ready||!cloud.user)return null;
@@ -538,16 +570,19 @@
      (record?'<button class="button secondary" data-money-action="export-finance">Export Money JSON</button><button class="button secondary" data-money-action="export-audit">Audit report</button>':'')+
      '<button class="button secondary" data-money-action="cloud-check">Check cloud backup</button>'+
      (record?'<button class="button secondary" data-money-action="cloud-backup">Back up to Firebase</button>':'')+'</div>';
+   const syncControls='<div id="money-sync-panel">'+(window.CommandMoneySync?.renderControls?.()||
+     '<div class="money-help">Money sync is initializing…</div>')+'</div>';
    const header='<div class="money-header"><div><h1>Money</h1><p>Your paychecks, purchases, bills and budgets</p></div>'+
      (record?'<button class="button money-new-quick" data-money-action="new-transaction">+ Transaction</button>':'')+'</div>';
-   if(error)return header+'<div class="money-warning">'+e(error)+'</div>'+importControls;
-   if(!record)return header+importControls+previewView()+
+   if(error)return header+syncControls+'<div class="money-warning">'+e(error)+'</div>'+importControls;
+   if(!record)return header+syncControls+importControls+previewView()+
      '<div class="money-empty"><strong>No finances imported yet</strong><p>In Everyday, export the <b>Finances JSON</b> section. Choose that file here to see a verification report before saving. Your work schedule and existing Command data will remain untouched.</p></div>';
    const f=record.data,r=record.report;
    const currentCloud=cloudRecord();
    const verification=section("Import integrity",'<span class="money-verified">'+(verified?"Local copy verified":"Checking saved copy")+'</span>',
      '<p class="money-help">'+r.transactions+' original IDs · '+r.rules+' classification rules · '+r.schedules+' recurring items · '+r.categoryLimits+' limits · '+r.unresolvedBank+' unresolved bank rows.</p>'+
-     '<p class="money-help">Imported '+e(record.importedAt.slice(0,10))+' from '+e(record.sourceFilename)+'. '+(currentCloud?'Google backup matches this copy ('+e(currentCloud.verifiedAt.slice(0,10))+').':'Changes are not backed up to Google yet, or backup not verified.')+'</p>'+
+     '<p class="money-help">Imported '+e(record.importedAt.slice(0,10))+' from '+e(record.sourceFilename)+'. '+
+       (syncCurrent?'Automatic Google Money sync is current.':currentCloud?'Manual Google backup matches this copy ('+e(currentCloud.verifiedAt.slice(0,10))+').':'No verified cloud copy of the latest changes yet.')+'</p>'+
      (record.editedAt?'<p class="money-help">Last local Money change: '+e(record.editedAt.slice(0,16).replace("T"," "))+'. Back up again after editing.</p>':'')+
      (r.archived?'<p class="money-help">'+r.archived+' archived transactions retained for recovery.</p>':'')
    );
@@ -576,11 +611,12 @@
        card("Receipt itemizations",String(r.receipts),"")+
        card("Monthly limits",String(r.categoryLimits),"")+'</div>');
    }
-   const needsBackup=record.editedAt&&!currentCloud;
+   const syncCurrent=window.CommandMoneySync?.isCurrent?.(record.sha256)===true;
+   const needsBackup=record.editedAt&&!currentCloud&&!syncCurrent;
    const backupReminder=needsBackup?'<div class="money-backup-reminder" role="status"><strong>Local money changes need a fresh cloud backup</strong>'+
      '<p>Your last verified Firebase copy is still available. New edits are on this device until you back them up.</p>'+
      '<button class="button secondary" data-money-action="cloud-backup">Back up changes</button></div>':'';
-   return header+backupReminder+importControls+previewView()+nav+body+verification;
+   return header+syncControls+backupReminder+importControls+previewView()+nav+body+verification;
  }
  async function onFile(file){
    if(!file)return;
@@ -677,6 +713,7 @@
  });
  read();
  window.CommandMoney={render,getRecord:()=>record,getData:()=>record?.data||null,report:()=>record?.report||null,verified:()=>verified,
+   isSyncEditing,applySyncedData,
    download:()=>{if(record)download("command-finances-"+day()+".json",{format:FORMAT,section:"finances",data:record.data});},
    reload:read,validateFile,sha};
 })();
