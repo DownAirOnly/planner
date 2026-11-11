@@ -68,7 +68,7 @@ function bankRows(preview){
 }
 function preview(p){
  if(!p)return "";
- const errors=p.errors||p.plan?.errors||[],warnings=[...(p.warnings||[]),...(p.plan?.warnings||[])];
+ const errors=p.kind==="bank"?(p.plan?.errors||[]):(p.errors||[]),warnings=[...(p.warnings||[]),...(p.plan?.warnings||[])];
  const blocked=errors.length>0;
  const heading={bank:"Bank statement preview",receipt:"Receipt / transaction preview",enrichment:"Clarification preview"}[p.kind];
  let counts="";

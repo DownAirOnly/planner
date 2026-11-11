@@ -119,6 +119,7 @@
  let record=null,error="",pending=null,verified=false,view="overview",span=7,month="all",page=0;
  let search="",kindFilter="all",categoryFilter="all",editId=null,showArchived=false,planEditor=null;
  let classEditing=null,classReview=false;
+ let csvMode="bank",csvPending=null;
  function read(){
    const raw=localStorage.getItem(KEY);
    if(!raw){record=null;return;}
@@ -487,7 +488,8 @@
  }
 
  function isSyncEditing(){
-   return editId!==null||planEditor!==null||pending!==null||classEditing!==null||classReview;
+   return editId!==null||planEditor!==null||pending!==null||
+     classEditing!==null||classReview||csvPending!==null;
  }
  // Called only by the opt-in sync coordinator after a complete, checksum-
  // verified cloud read. Saved local data and the open editor are checked again
@@ -572,6 +574,116 @@
    if(!confirm("Apply "+checked.length+" reviewed classification update"+(checked.length===1?"":"s")+"? Original bank amounts and descriptions will not change."))return;
    await commitLedger(next,"apply reviewed classification suggestions");
    classReview=true;classEditing=null;dispatch();
+ }
+
+ // CSV imports reuse exactly the same local validation, recovery and account-
+ // scoped sync path as manual transaction edits. No remote bank files are sent.
+ function csvReady(){
+   if(!record||!verified)throw Error("Import and verify the Money ledger first.");
+   if(editId!==null||planEditor!==null||classEditing!==null)
+     throw Error("Close transaction, bill, or classification editors before importing.");
+ }
+ async function csvReadForm(form){
+   csvReady();
+   const data=new FormData(form),file=data.get("file");
+   const pasted=String(data.get("text")||"").trim();
+   if(file?.size>5000000||pasted.length>5000000)throw Error("CSV must be under 5 MB.");
+   const text=pasted||(file?.size?await file.text():"");
+   if(!text.trim())throw Error("Choose a CSV file or paste rows to preview.");
+   const filename=pasted?"Pasted CSV":file.name;
+   const base=record.sha256,finance=record.data;
+   if(csvMode==="bank"){
+     const bank=window.CommandMoneyBankImport;
+     const accountLabel=String(data.get("accountLabel")||"").trim();
+     const statementLabel=String(data.get("statementLabel")||"").trim()||bank.inferBofaStatementLabel(text);
+     if(!statementLabel)throw Error("Enter a statement label or use a CSV with recognizable dates.");
+     const parsed=bank.readBofaCSV(text,{accountLabel,statementLabel});
+     const plan=window.CommandMoneyBankReview.prepareReconciliation(parsed.records,finance,{
+       errors:parsed.errors,warnings:parsed.warnings,details:parsed.details,filename
+     });
+     csvPending={kind:"bank",sourceHash:base,filename,plan,
+       sourceTransactions:finance.transactions,errors:plan.errors,warnings:[]};
+   }else{
+     const result=csvMode==="receipt"?
+       window.CommandMoneyCsvModel.receiptPreview(text,finance):
+       window.CommandMoneyCsvModel.enrichmentPreview(text,finance);
+     csvPending={...result,sourceHash:base,filename};
+   }
+   dispatch();
+   document.querySelector("#money-import-preview")?.scrollIntoView({block:"start",behavior:"smooth"});
+ }
+ function csvReviewSaved(){
+   csvReady();
+   const rows=record.data.budgetPlan.unresolvedBankRows||[];
+   if(!rows.length)throw Error("No unresolved bank rows are saved.");
+   const plan=window.CommandMoneyBankReview.prepareReconciliation(rows,record.data,{
+     warnings:["These bank rows were saved for review. No transactions have been added yet."],
+     filename:"Saved unresolved bank rows"
+   });
+   csvMode="bank";
+   csvPending={kind:"bank",sourceHash:record.sha256,filename:"Saved unresolved bank rows",
+     sourceTransactions:record.data.transactions,plan,errors:plan.errors,warnings:[]};
+   view="import";dispatch();
+ }
+ function csvChoose(rowId,choice,receipt="",adjustment="Uncategorized",note=""){
+   if(!csvPending||csvPending.kind!=="bank")throw Error("No bank review is open.");
+   if(!csvPending.plan.bankRecords.some(r=>r.id===rowId))throw Error("Bank row is not in this review.");
+   const plan=window.CommandMoneyBankReview.bankChoose(csvPending.plan,record.data,rowId,
+     choice,receipt,adjustment,note);
+   csvPending.plan=plan;
+   csvPending.errors=plan.errors;
+   dispatch();
+ }
+ async function csvCommit(){
+   csvReady();
+   if(!csvPending)throw Error("No CSV import has been previewed.");
+   if(csvPending.sourceHash!==record.sha256)
+     throw Error("Money changed since the import preview. Preview the CSV again.");
+   if(csvPending.errors?.length)throw Error("Fix every CSV preview error before importing.");
+   const p=csvPending,next=structuredClone(record.data);
+   let changes=0;
+   if(p.kind==="bank"){
+     if(!p.plan.candidate)throw Error("Bank reconciliation has unresolved errors.");
+     const result=p.plan.candidate;
+     next.transactions=result.transactions;
+     next.budgetPlan=result.budgetPlan;
+     changes=p.plan.bankReview.newRows.length+p.plan.bankReview.matched.length+
+       p.plan.bankReview.needsReview.length;
+     if(!changes){csvPending=null;dispatch();alert("All statement rows have already been processed.");return;}
+   }else if(p.kind==="receipt"){
+     if(!p.rows.length){csvPending=null;dispatch();alert("All matching receipt IDs were already saved.");return;}
+     next.transactions.push(...p.rows.map(x=>structuredClone(x)));
+     changes=p.rows.length;
+   }else if(p.kind==="enrichment"){
+     if(!p.rows.length){csvPending=null;dispatch();alert("No changed clarifications to apply.");return;}
+     const indices=new Map(next.transactions.map((tx,i)=>[tx.id,i]));
+     for(const row of p.rows){
+       const index=indices.get(row.record.id);
+       if(index==null||JSON.stringify(next.transactions[index])!==JSON.stringify(row.previous))
+         throw Error("A transaction was edited after the CSV export. Nothing was changed.");
+       next.transactions[index]=structuredClone(row.record);
+     }
+     changes=p.rows.length;
+   }else throw Error("Unknown CSV import.");
+   if(prompt("Confirm "+changes+" "+(p.kind==="bank"?"bank review decisions":p.kind==="receipt"?"new transactions":"transaction clarifications")+
+      "? This saves a local recovery copy and can sync to your Google account when automatic sync is enabled. Type IMPORT.")!=="IMPORT")return;
+   await commitLedger(next,p.kind==="bank"?"import reviewed bank statement":
+       p.kind==="receipt"?"import reviewed receipt CSV":"apply transaction clarifications");
+   csvPending=null;dispatch();
+   alert("Finance CSV committed. "+changes+" reviewed action"+(changes===1?"":"s")+
+     " saved locally. Check the Money sync status or make a manual Firebase backup.");
+ }
+ function downloadText(filename,body,type="text/csv"){
+   const b=new Blob([body],{type:type+";charset=utf-8"}),u=URL.createObjectURL(b);
+   const a=document.createElement("a");a.href=u;a.download=filename;document.body.append(a);a.click();a.remove();
+   setTimeout(()=>URL.revokeObjectURL(u),1000);
+ }
+ function csvView(){
+   return window.CommandMoneyImportUI.entry(csvMode)+
+     (record?.data.budgetPlan.unresolvedBankRows.length?
+       '<div class="money-csv-actions"><button class="button secondary" data-money-action="csv-review-unresolved">'+
+       'Review '+record.data.budgetPlan.unresolvedBankRows.length+' saved bank rows</button></div>':"")+
+     window.CommandMoneyImportUI.preview(csvPending);
  }
  function cloudRecord(){
    const cloud=window.CommandCloud;
@@ -663,10 +775,11 @@
      (record.editedAt?'<p class="money-help">Last local Money change: '+e(record.editedAt.slice(0,16).replace("T"," "))+'. Back up again after editing.</p>':'')+
      (r.archived?'<p class="money-help">'+r.archived+' archived transactions retained for recovery.</p>':'')
    );
-   const nav='<div class="money-subnav">'+[["overview","Overview"],["history","History"],["bills","Bills"],["budgets","Budgets"]].map(([key,name])=>
+   const nav='<div class="money-subnav">'+[["overview","Overview"],["history","History"],["bills","Bills"],["budgets","Budgets"],["import","Import"]].map(([key,name])=>
      '<button class="'+(view===key?'active':'')+'" data-money-action="subview" data-subview="'+key+'">'+name+'</button>').join("")+'</div>';
    let body="";
    if(view==="history")body=transactionEditor(f)+section("Transactions",'<span class="muted">'+r.transactions+' active · '+r.archived+' archived</span>',recordsView(f));
+   else if(view==="import")body=csvView();
    else if(view==="bills")body=billsView(f);
    else if(view==="budgets")body=budgetView(f)+renderClassification(f);
    else{
@@ -707,6 +820,21 @@
    if(!button)return;
    const action=button.dataset.moneyAction;
    try{
+     if(action==="csv-mode"){csvMode=button.dataset.csvMode;csvPending=null;dispatch();return;}
+     if(action==="csv-cancel"){csvPending=null;dispatch();return;}
+     if(action==="csv-review-unresolved"){csvReviewSaved();return;}
+     if(action==="csv-commit"){await csvCommit();return;}
+     if(action==="csv-template"){
+       try{await navigator.clipboard.writeText(window.CommandMoneyImportUI.csvSample);alert("Receipt CSV template copied.");}
+       catch{prompt("Copy this receipt CSV:",window.CommandMoneyImportUI.csvSample);}
+       return;
+     }
+     if(action==="csv-enrichment-export"){
+       csvReady();
+       downloadText("command-finance-enrichment-"+day()+".csv",
+         window.CommandMoneyBankImport.financeEnrichmentCSV(record.data.transactions));
+       return;
+     }
      if(action==="class-new"){classStart("new");return;}
      if(action==="class-edit"){classStart(button.dataset.id);return;}
      if(action==="class-cancel"){classEditing=null;dispatch();return;}
@@ -735,7 +863,7 @@
      if(action==="archive-transaction"){await archiveTransaction(button.dataset.id);return;}
      if(action==="restore-transaction"){await restoreTransaction(button.dataset.id);return;}
      if(action==="cancel-preview"){pending=null;dispatch();}
-     if(action==="subview"){view=button.dataset.subview;page=0;editId=null;planEditor=null;classEditing=null;classReview=false;dispatch();}
+     if(action==="subview"){view=button.dataset.subview;page=0;editId=null;planEditor=null;classEditing=null;classReview=false;csvPending=null;dispatch();}
      if(action==="span"){span=Number(button.dataset.days)===14?14:7;dispatch();}
      if(action==="prev-page"){page=Math.max(0,page-1);dispatch();}
      if(action==="next-page"){page++;dispatch();}
@@ -767,6 +895,12 @@
    if(results&&record)results.innerHTML=historyRows(record.data);
  });
  document.addEventListener("submit",async event=>{
+   if(event.target?.id==="money-csv-form"){
+     event.preventDefault();
+     try{await csvReadForm(event.target);}
+     catch(error){alert("CSV preview failed: "+error.message);}
+     return;
+   }
    if(event.target?.id==="money-class-form"){
      event.preventDefault();
      try{await classSave(event.target);}catch(error){alert("Classification rule not saved: "+error.message);}
@@ -793,8 +927,26 @@
      alert("Transaction saved locally. Remember to back up Money to Firebase after edits.");
    }catch(error){alert("Transaction not saved: "+error.message);}
  });
+
  document.addEventListener("change",async event=>{
-   if(event.target?.id==="money-month"){month=event.target.value;page=0;dispatch();return;}
+   const target=event.target;
+   if(target?.matches?.("[data-money-bank-choice], [data-money-bank-receipt], [data-money-bank-adjustment], [data-money-bank-note]")){
+     try{
+       const row=target.dataset.moneyBankChoice||target.dataset.moneyBankReceipt||
+         target.dataset.moneyBankAdjustment||target.dataset.moneyBankNote;
+       const p=csvPending,existing=p?.plan?.bankDecisions?.[row]||{action:"defer"};
+       const choice=target.dataset.moneyBankChoice!=null?target.value:existing.action;
+       const bankRow=p.plan.bankRecords.find(x=>x.id===row);
+       const candidates=window.CommandMoneyBankReview.bankReceiptCandidates(bankRow,record.data.transactions);
+       let receipt=target.dataset.moneyBankReceipt!=null?target.value:existing.receiptId||"";
+       if(choice==="match"&&!receipt)receipt=candidates[0]?.tx.id||"";
+       const category=target.dataset.moneyBankAdjustment!=null?target.value:existing.adjustmentCategory||"Uncategorized";
+       const note=target.dataset.moneyBankNote!=null?target.value:existing.adjustmentNote||"";
+       csvChoose(row,choice,receipt,category,note);return;
+     }catch(error){alert("Bank review choice: "+error.message);return;}
+   }
+   if(target?.id==="money-month"){month=target.value;page=0;dispatch();return;}
+
    if(event.target?.id==="money-kind"){kindFilter=event.target.value;page=0;dispatch();return;}
    if(event.target?.id==="money-category"){categoryFilter=event.target.value;page=0;dispatch();return;}
    if(event.target?.id!=="money-import-input")return;
