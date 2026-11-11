@@ -120,6 +120,7 @@
  let search="",kindFilter="all",categoryFilter="all",editId=null,showArchived=false,planEditor=null;
  let classEditing=null,classReview=false;
  let csvMode="bank",csvPending=null,insightPeriod="30d",reviewFilter="all";
+ let paycheckCount=1,whatIf={input:"",amountCents:null};
  function read(){
    const raw=localStorage.getItem(KEY);
    if(!raw){record=null;return;}
@@ -201,6 +202,14 @@
      original.items.map((i,n)=>'<div class="money-receipt-row"><label>Item <input name="receipt-name-'+n+'" maxlength="120" value="'+e(i.name)+'"></label>'+
        '<label>Category <input name="receipt-category-'+n+'" maxlength="80" value="'+e(i.category)+'"></label>'+
        '<strong>'+cents(i.amountCents)+'</strong></div>').join("")+'</details>':"";
+   const eligiblePaydates=[...new Set(window.CommandMoneyPlanning.occurrences(f.budgetPlan,
+     plus(d.purchaseDate||d.date,-90),plus(d.purchaseDate||d.date,90))
+     .filter(x=>x.kind==="income"&&x.status!=="skipped").map(x=>x.date))].sort();
+   if(d.paycheckDate&&!eligiblePaydates.includes(d.paycheckDate))eligiblePaydates.push(d.paycheckDate);
+   const paycheckSelect='<label class="money-tx-field money-tx-wide"><span>Paycheck that covers this purchase (optional)</span>'+
+     '<select name="paycheckDate">'+selectOption("","", "Use purchase date")+
+     eligiblePaydates.map(date=>selectOption(date,d.paycheckDate||"",date)).join("")+'</select>'+
+     '<small>Linked scheduled bills follow the bill assignment instead. This does not edit the original transaction date.</small></label>';
    const billDates=(d.kind==="expense"&&f.budgetPlan.schedules.length)?
      window.CommandMoneyPlanning.occurrences(f.budgetPlan,plus(d.purchaseDate||d.date,-60),plus(d.purchaseDate||d.date,60),f.transactions)
        .filter(x=>x.kind==="expense"): [];
@@ -229,7 +238,7 @@
      (bank?"":formInput("Payment account","accountLabel",d.accountLabel||"","text",'maxlength="120"'))+
      formInput("Purchase date (optional)","purchaseDate",d.purchaseDate||"","date")+
      formInput("Time (optional)","time",d.time||"","time")+
-     '</div>'+catList+billLink+
+     '</div>'+catList+billLink+paycheckSelect+
      '<label class="money-tx-field money-tx-wide"><span>Note</span><textarea name="note" rows="2" maxlength="500">'+e(d.note||"")+'</textarea></label>'+
      '<label class="money-tx-field money-tx-wide"><span>Receipt notes</span><textarea name="itemization" rows="2" maxlength="3000">'+e(d.itemization||"")+'</textarea></label>'+
      receipt+
@@ -262,6 +271,14 @@
    }
    if(tx.purchaseDate&&!iso(tx.purchaseDate))throw Error("Invalid purchase date.");
    if(tx.time&&!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(tx.time))throw Error("Invalid time.");
+   const payDate=String(v.paycheckDate||"").trim();
+   if(payDate){
+     if(!iso(payDate))throw Error("Invalid assigned paycheck date.");
+     const eligible=window.CommandMoneyPlanning.occurrences(f.budgetPlan,plus(date,-90),plus(date,90))
+       .some(x=>x.kind==="income"&&x.date===payDate&&x.status!=="skipped");
+     if(!eligible&&payDate!==original?.paycheckDate)throw Error("Choose a scheduled payday to assign this purchase.");
+     tx.paycheckDate=payDate;
+   }else delete tx.paycheckDate;
    if(original?.items?.length)tx.items=original.items.map((item,n)=>({
      ...item,name:String(v["receipt-name-"+n]||"").trim(),
      category:String(v["receipt-category-"+n]||"").trim()
@@ -479,6 +496,19 @@
      if(!iso(values.asOf)||values.asOf>day())throw Error("Choose today or an earlier date for the cash balance.");
      plan.balanceCents=parseBalance(values.balance);
      plan.balanceAsOf=values.asOf;
+   }else if(kind==="assignment"){
+     const id=String(values.id||""),date=String(values.date||""),selected=String(values.paycheckDate||"");
+     const rule=plan.schedules.find(r=>r.id===id&&r.kind==="expense");
+     if(!rule||!iso(date)||!window.CommandMoneyPlanning.occurs(rule,date))
+       throw Error("That scheduled bill was not found.");
+     const key=id+"|"+date;
+     if(selected){
+       const found=window.CommandMoneyPlanning.occurrences(plan,plus(date,-75),plus(date,75))
+         .some(x=>x.kind==="income"&&x.status!=="skipped"&&x.date===selected);
+       if(!found&&selected!==plan.billAssignments[key])
+         throw Error("Choose an existing scheduled payday.");
+       plan.billAssignments[key]=selected;
+     }else delete plan.billAssignments[key];
    }else if(kind==="override"){
      const id=String(values.id||""),date=String(values.date||"");
      const r=plan.schedules.find(x=>x.id===id);
@@ -789,7 +819,8 @@
    else{
      const p=summary(f,span),balance=f.budgetPlan.balanceCents;
      const forecast=window.CommandMoneyPlanning.forecast(f,day(),35);
-     body='<section class="money-section"><div class="section-head"><h2>Planned cash flow</h2><div class="money-period"><button data-money-action="span" data-days="7" class="'+(span===7?'active':'')+'">1 week</button><button data-money-action="span" data-days="14" class="'+(span===14?'active':'')+'">2 weeks</button></div></div>'+
+     body=window.CommandMoneyPaychecksUI.render(f,day(),paycheckCount,whatIf)+
+       '<section class="money-section"><div class="section-head"><h2>Planned cash flow</h2><div class="money-period"><button data-money-action="span" data-days="7" class="'+(span===7?'active':'')+'">1 week</button><button data-money-action="span" data-days="14" class="'+(span===14?'active':'')+'">2 weeks</button></div></div>'+
        '<p class="money-help">'+e(p.start)+' – '+e(p.end)+'. Pending scheduled income − unpaid bills − purchases without a linked bill. Linked bill purchases are not counted twice. This is not your bank balance.</p>'+
        '<div class="money-stats">'+card("Expected income",cents(p.income),"")+
        card("Scheduled bills","−"+cents(p.bills),"")+
@@ -848,6 +879,9 @@
      if(action==="class-hide"){classReview=false;dispatch();return;}
      if(action==="class-apply"){await classApply();return;}
      if(action==="class-delete"){await classDelete(button.dataset.id);return;}
+     if(action==="paycheck-setup"){view="bills";planEditorStart("schedule","","","income");return;}
+     if(action==="checks"){paycheckCount=Number(button.dataset.checks)===2?2:1;whatIf={input:"",amountCents:null};dispatch();return;}
+     if(action==="plan-assign-bill"){planEditorStart("assignment",button.dataset.id,button.dataset.date);return;}
      if(action==="plan-add-schedule"){planEditorStart("schedule");return;}
      if(action==="plan-edit-schedule"){planEditorStart("schedule",button.dataset.id);return;}
      if(action==="plan-add-limit"){planEditorStart("limit");return;}
@@ -901,6 +935,17 @@
    if(results&&record)results.innerHTML=historyRows(record.data);
  });
  document.addEventListener("submit",async event=>{
+   if(event.target?.id==="money-what-if-form"){
+     event.preventDefault();
+     try{
+       const input=String(new FormData(event.target).get("amount")||"");
+       const n=moneyAmount(input);
+       const view=window.CommandMoneyPaychecks.paycheckWindows(record.data.budgetPlan,record.data.transactions,day(),paycheckCount);
+       if(!view.configured||!view.periods.length)throw Error("Set up a payday first.");
+       whatIf={input,amountCents:n};dispatch();
+     }catch(error){alert("What-if calculation: "+error.message);}
+     return;
+   }
    if(event.target?.id==="money-csv-form"){
      event.preventDefault();
      try{await csvReadForm(event.target);}

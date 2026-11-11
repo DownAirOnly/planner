@@ -17,9 +17,11 @@
        '<span class="money-plan-linked">Linked transaction</span>':
        '<button data-money-action="plan-mark-pending" data-id="'+e(event.id)+'" data-date="'+e(event.date)+'">Undo</button>');
    return '<div class="money-plan-occurrence'+(event.settled?" settled":"")+'"><div class="money-plan-occurrence-copy"><small>'+e(event.date)+' · '+e(status)+'</small>'+
-     '<strong>'+e(event.name)+'</strong><span class="'+e(event.kind)+'">'+sign+usd(event.amountCents)+'</span></div>'+
+     '<strong>'+e(event.name)+'</strong><span class="'+e(event.kind)+'">'+sign+usd(event.amountCents)+'</span>'+
+     (event.assignedDate?'<small>Covered by paycheck '+e(event.assignedDate)+'</small>':"")+'</div>'+
      '<div class="money-plan-occurrence-actions">'+actions+
-     (event.kind==="income"?'<button data-money-action="plan-adjust-paycheck" data-id="'+e(event.id)+'" data-date="'+e(event.date)+'">Amount</button>':"")+'</div></div>';
+     (event.kind==="income"?'<button data-money-action="plan-adjust-paycheck" data-id="'+e(event.id)+'" data-date="'+e(event.date)+'">Amount</button>':
+       '<button data-money-action="plan-assign-bill" data-id="'+e(event.id)+'" data-date="'+e(event.date)+'">Paycheck</button>')+'</div></div>';
  };
  const section=(title,action,content)=>'<section class="money-section"><div class="section-head"><h2>'+title+'</h2>'+(action||"")+'</div>'+content+'</section>';
  function scheduleEditor(plan,editing){
@@ -74,13 +76,36 @@
      '<div class="money-plan-editor-actions"><button class="button" type="submit">Save amount</button>'+
      (override!=null?'<button class="button secondary" type="button" data-money-action="plan-reset-paycheck" data-id="'+e(editing.id)+'" data-date="'+e(editing.date)+'">Use regular amount</button>':"")+'</div></form></section>';
  }
+
+ function assignmentEditor(finance,editing){
+   if(!editing||editing.kind!=="assignment")return "";
+   const plan=finance.budgetPlan;
+   const rule=plan.schedules.find(r=>r.id===editing.id&&r.kind==="expense");
+   if(!rule||!model().occurs(rule,editing.date))return '<p class="money-warning">This scheduled bill no longer exists.</p>';
+   const dates=[...new Set(model().occurrences(plan,model().dateShift(editing.date,-75),
+     model().dateShift(editing.date,75),[]).filter(x=>x.kind==="income"&&x.status!=="skipped").map(x=>x.date))].sort();
+   const saved=plan.billAssignments[editing.id+"|"+editing.date]||"";
+   const choices=[["","Use original due date"],...dates.map(d=>[d,d])];
+   if(saved&&!dates.includes(saved))choices.push([saved,saved+" (saved allocation)"]);
+   return '<section class="money-plan-editor" id="money-plan-editor"><div class="section-head"><h2>Assign bill to paycheck</h2>'+
+     '<button data-money-action="plan-cancel">Cancel</button></div>'+
+     '<p class="money-help">'+e(rule.name)+' · Due '+e(editing.date)+
+     '. The assignment only determines which paycheck covers this bill. The due date itself is unchanged.</p>'+
+     '<form id="money-plan-form" data-plan-kind="assignment"><input type="hidden" name="id" value="'+e(editing.id)+'">'+
+     '<input type="hidden" name="date" value="'+e(editing.date)+'">'+
+     '<label class="money-plan-field"><span>Cover it with</span><select name="paycheckDate">'+options(choices,saved)+'</select></label>'+
+     (!dates.length?'<p class="money-warning">There are no scheduled paychecks near this due date. Add a payday first.</p>':"")+
+     '<button class="button" type="submit">Save assignment</button></form></section>';
+ }
  function editor(finance,editing){
    return scheduleEditor(finance.budgetPlan,editing)+limitEditor(finance.budgetPlan,editing)+
-     balanceEditor(finance.budgetPlan,editing)+paycheckEditor(finance,editing);
+     balanceEditor(finance.budgetPlan,editing)+paycheckEditor(finance,editing)+assignmentEditor(finance,editing);
  }
  function bills(finance,editing,today){
    const plan=finance.budgetPlan,start=model().dateShift(today,-14),end=model().dateShift(today,35);
-   const all=model().occurrences(plan,start,end,finance.transactions);
+   const all=model().occurrences(plan,start,end,finance.transactions).map(x=>({
+     ...x,assignedDate:plan.billAssignments[x.id+"|"+x.date]||""
+   }));
    const pending=all.filter(x=>!x.settled);
    const dueSoon=pending.filter(x=>x.date<=model().dateShift(today,14));
    const later=pending.filter(x=>x.date>model().dateShift(today,14));
