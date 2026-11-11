@@ -71,7 +71,7 @@
      else if(Object.prototype.hasOwnProperty.call(meta.other,key))result[key]=meta.other[key];
      else throw Error("Cloud Money settings are missing "+key+".");
    }
-   if(!keys.has("transactions")||keys.has("archivedTransactions")!==meta.archivedOrder.length>0&&meta.archivedOrder.length)
+   if(!keys.has("transactions")||(meta.archivedOrder.length>0&&!keys.has("archivedTransactions")))
      throw Error("Cloud Money transaction fields are missing.");
    if(Object.keys(meta.other).some(key=>!keys.has(key)||key==="transactions"||key==="archivedTransactions"))
      throw Error("Unexpected cloud Money settings.");

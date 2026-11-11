@@ -181,7 +181,7 @@ async function init(){
          !snapshot.parts.meta||!snapshot.parts.months||typeof snapshot.parts.months!=="object")
         throw Error("Cloud Money sync snapshot is invalid.");
       const keys=Object.keys(snapshot.parts.months);
-      if(keys.length>400||keys.some(k=>!/^\\d{4}-(0[1-9]|1[0-2])$/.test(k)))
+      if(keys.length>400||keys.some(k=>!/^\d{4}-(0[1-9]|1[0-2])$/.test(k)))
         throw Error("Cloud Money month index is invalid.");
       const meta=await readSyncPart(snapshot.parts.meta);
       const months={};
