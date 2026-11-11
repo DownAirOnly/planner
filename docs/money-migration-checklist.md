@@ -95,3 +95,12 @@ A manual backup is still recommended before opting into automatic Money sync.
 - Spending insights now support 30/90 days, all history, monthly filters, top categories/merchants, separate incoming/outgoing transfers, and review flags.
 - Importing or applying records remains an explicit local transaction; optional Firebase monthly sync and manual backups are unchanged. No original personal bank data is committed to the repo.
 - Real-device testing with an actual BofA CSV and receipt/clarification CSV remains required. Do not retire Money from Everyday until all parity acceptance checks pass.
+
+## v34 — Paycheck-centric allocations
+
+- The Money overview now includes a paycheck ledger using Everyday's payday-driven windows, allocation rules, linked-bill accounting, held-back prior-check estimates, and non-recording what-if purchase calculations.
+- One-check and two-check controls do not replace the existing 1-week/2-week calendar cash-flow cards.
+- Money → Bills supports assigning a specific scheduled bill occurrence to a saved payday or resetting it to due-date allocation.
+- Transaction editing supports an optional assigned paycheck date for discretionary purchases; a bill-linked transaction still follows the bill's assigned paycheck.
+- All these actions preserve original bank dates and amounts and go through local recovery + manual/opt-in cloud sync.
+- Paycheck-anchored and calendar-based reports represent different windows; they should not be expected to show identical totals unless their periods align.
