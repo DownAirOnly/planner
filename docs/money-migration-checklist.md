@@ -41,3 +41,13 @@
 - Every transaction save first snapshots the previous whole local finance state for recovery, validates the entire edited ledger, hashes it, and verifies its saved bytes. A stale copy from another tab cannot overwrite a newer local checksum.
 - Re-import of Everyday data is blocked if it would overwrite edited Command transactions; future safe merge requires a separate design.
 - Local changes invalidate the prior cloud verification until the owner manually backs up and verifies again. No automatic cloud sync is represented as active.
+
+## v30 — Bills and budgeting
+
+- Editable once/weekly/biweekly/monthly bills and paychecks, due dates, ending dates, and amounts. Existing occurrence markers survive schedule edits; a warning is shown if a repeat pattern changes.
+- Payment occurrences can be marked Paid, Received, Skipped, or undone without generating fake ledger transactions. Paycheck amounts are overridable by specific date.
+- A linked expense transaction (billKey = schedule ID | due date) excludes that scheduled bill from the pending forecast and is excluded from unlinked purchases. Users must explicitly link unmatched transactions; the app never guesses bank matches.
+- Monthly category limits can be edited/added/removed, with accurate splits from receipt itemization and adjustment categories.
+- Manual end-of-day available cash supports a 35-day forward projection of future outstanding scheduled income/expenses; it never double-counts bank transactions as changes to that cash balance.
+- Cash-flow overview keeps 7-/14-day controls. These are plans, not live bank balances.
+- All edits reuse v29 local recovery/checksum/write protection. Cloud copies update **only** when the user explicitly backs up and verifies.

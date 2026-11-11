@@ -1,5 +1,5 @@
-const CACHE_NAME="command-v29-money-safety";
-const FILES=["./","./index.html","./styles.css","./app.js","./money.js","./cloud.js","./firebase-config.js","./timekeeping.js","./schedule.js","./schedule.css","./schedule-import.js","./icons.svg","./icon.svg","./apple-touch-icon-v9.png","./manifest.webmanifest"];
+const CACHE_NAME="command-v30-bills-budget";
+const FILES=["./","./index.html","./styles.css","./app.js","./money-planning.js","./money-bills-ui.js","./money.js","./cloud.js","./firebase-config.js","./timekeeping.js","./schedule.js","./schedule.css","./schedule-import.js","./icons.svg","./icon.svg","./apple-touch-icon-v9.png","./manifest.webmanifest"];
 self.addEventListener("install",(event)=>{
   event.waitUntil(caches.open(CACHE_NAME).then((cache)=>cache.addAll(FILES.map((p)=>new URL(p,self.registration.scope).toString()))).then(()=>self.skipWaiting()));
 });

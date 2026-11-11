@@ -2,7 +2,7 @@
  "use strict";
  const KEY="command.finance.v1", RECOVERY="command.finance.beforeImport", CLOUD_VERIFIED="command.finance.cloudVerified";
  const FORMAT="everyday-section-v1";
- const iso=x=>typeof x==="string"&&/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(x)&&!Number.isNaN(Date.parse(x+"T12:00:00Z"));
+ const iso=x=>typeof x==="string"&&/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(x)&&!Number.isNaN(Date.parse(x+"T12:00:00Z"))&&new Date(x+"T12:00:00Z").toISOString().slice(0,10)===x;
  const day=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
  const plus=(date,n)=>{const d=new Date(date+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
  const e=x=>String(x??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -117,7 +117,7 @@
    return {added,changed,unchanged,missing,archivedRestored:restored};
  }
  let record=null,error="",pending=null,verified=false,view="overview",span=7,month="all",page=0;
- let search="",kindFilter="all",categoryFilter="all",editId=null,showArchived=false;
+ let search="",kindFilter="all",categoryFilter="all",editId=null,showArchived=false,planEditor=null;
  function read(){
    const raw=localStorage.getItem(KEY);
    if(!raw){record=null;return;}
@@ -139,8 +139,8 @@
      throw Error("The selected export is missing "+pending.diff.missing+" previously imported transaction IDs. No records were changed. Export a newer, complete Everyday finance file.");
    if(pending.diff?.archivedRestored)
      throw Error("This export would restore archived transactions. Review the archived records before replacing Money data.");
-   if(record?.editedAt&&pending.diff?.changed)
-     throw Error("This Everyday export would overwrite "+pending.diff.changed+" transactions edited in Command. Export your current Money backup first; safe conflict merging is not yet implemented.");
+   if(record?.editedAt&&pending.sha256!==record.sha256)
+     throw Error("This Everyday export would replace locally edited Money data, including budgets or scheduled bills. Export a Command Money backup first; safe conflict merging is not yet implemented.");
    if(record?.sha256===pending.sha256){pending=null;dispatch();return;}
    // No automatic merge or overwrite: an updated export has to be consciously
    // reviewed, and the previous local copy is preserved for recovery.
@@ -162,35 +162,7 @@
    const blob=new Blob([JSON.stringify(content,null,2)],{type:"application/json"});
    const u=URL.createObjectURL(blob),a=document.createElement("a");a.href=u;a.download=filename;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);
  }
- const occurrences=(plan,start,end)=>{
-   const rows=[];
-   const localDate=date=>new Date(date+"T12:00:00Z");
-   for(const rule of plan.schedules){
-     for(let d=start;d<=end;d=plus(d,1)){
-       if(d<rule.startDate||rule.endDate&&d>rule.endDate)continue;
-       const diff=Math.round((localDate(d)-localDate(rule.startDate))/86400000);
-       if(rule.frequency==="once"&&diff!==0||rule.frequency==="weekly"&&diff%7!==0||
-          rule.frequency==="biweekly"&&diff%14!==0)continue;
-       if(rule.frequency==="monthly"){
-         const originDay=Number(rule.startDate.slice(-2)),date=localDate(d),
-           last=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()+1,0)).getUTCDate();
-         if(Number(d.slice(-2))!==Math.min(originDay,last))continue;
-       }
-       const status=rule.occurrences[d]||"pending";
-       const amount=rule.kind==="income"?(plan.paycheckAmounts[rule.id+"|"+d]??rule.amountCents):rule.amountCents;
-       rows.push({id:rule.id,date:d,kind:rule.kind,name:rule.name,amountCents:amount,status});
-     }
-   }
-   return rows.sort((a,b)=>a.date.localeCompare(b.date)||a.name.localeCompare(b.name));
- };
- const summary=(f,days)=>{
-   const start=day(),end=plus(start,days-1),events=occurrences(f.budgetPlan,start,end).filter(x=>x.status==="pending");
-   const income=events.filter(x=>x.kind==="income").reduce((n,x)=>n+x.amountCents,0);
-   const bills=events.filter(x=>x.kind==="expense").reduce((n,x)=>n+x.amountCents,0);
-   const purchases=f.transactions.filter(x=>x.kind==="expense"&&!x.billKey&&(x.purchaseDate||x.date)>=start&&(x.purchaseDate||x.date)<=end)
-     .reduce((n,x)=>n+x.amountCents,0);
-   return {start,end,income,bills,purchases,available:income-bills-purchases,events};
- };
+ const summary=(f,days)=>window.CommandMoneyPlanning.cashFlow(f,day(),days);
  const card=(name,value,detail)=>'<div class="money-stat"><span>'+e(name)+'</span><strong>'+e(value)+'</strong>'+(detail?'<small>'+e(detail)+'</small>':'')+'</div>';
  const section=(title,right,body)=>'<section class="money-section"><div class="section-head"><h2>'+title+'</h2>'+(right||"")+'</div>'+body+'</section>';
 
@@ -373,30 +345,8 @@
      allCats.map(k=>selectOption(k,categoryFilter,k)).join("")+'</select></label></div>'+
      '<div id="money-history-results">'+historyRows(f)+'</div>';
  }
- function budgetView(f){
-   const plan=f.budgetPlan,monthDate=day().slice(0,7),expenses=f.transactions.filter(t=>t.kind==="expense"&&(t.purchaseDate||t.date).startsWith(monthDate));
-   const used=category=>expenses.reduce((n,t)=>{
-     if(t.items?.length)return n+t.items.filter(i=>i.category===category).reduce((sum,i)=>sum+i.amountCents,0);
-     return n+(t.category===category?t.amountCents:0);
-   },0);
-   return section("Monthly limits",'<span class="muted">'+e(monthDate)+'</span>',
-     '<div class="money-budget-list">'+plan.categoryLimits.map(l=>{
-       const spent=used(l.category),percent=Math.min(100,Math.round(100*spent/l.amountCents));
-       return '<div class="money-budget-row"><div><strong>'+e(l.category)+'</strong><span>'+cents(spent)+' / '+cents(l.amountCents)+'</span></div><progress max="100" value="'+percent+'"></progress></div>';
-     }).join("")+'</div>')+
-     section("Classification rules",'<span class="muted">'+f.classificationRules.length+' saved</span>',
-       '<div class="money-summary-list">'+f.classificationRules.map(r=>'<div class="money-detail-row"><strong>'+e(r.name)+'</strong><small>'+e(r.category)+' · '+e(r.matchText)+'</small></div>').join("")+'</div>');
- }
- function billsView(f){
-   const bills=[...f.budgetPlan.schedules].sort((a,b)=>a.startDate.localeCompare(b.startDate));
-   const overrideCount=Object.keys(f.budgetPlan.paycheckAmounts).length;
-   return section("Recurring bills & income",'<span class="muted">'+bills.length+' schedules</span>',
-     '<div class="money-summary-list">'+bills.map(b=>'<div class="money-detail-row"><strong>'+e(b.name)+'</strong><small>'+e(b.kind)+' · '+e(b.frequency)+' · starts '+e(b.startDate)+'</small><b>'+cents(b.amountCents)+'</b><small>'+Object.keys(b.occurrences).length+' marked occurrences</small></div>').join("")+'</div>')+
-     section("Saved finance adjustments","",'<div class="money-stats">'+
-       card("Paycheck overrides",String(overrideCount),"")+
-       card("Bill assignments",String(Object.keys(f.budgetPlan.billAssignments).length),"")+
-       card("Unresolved bank rows",String(f.budgetPlan.unresolvedBankRows.length),"")+'</div>');
- }
+ function budgetView(f){return window.CommandMoneyBillsUI.budgets(f,planEditor,day());}
+ function billsView(f){return window.CommandMoneyBillsUI.bills(f,planEditor,day());}
  function previewView(){
    if(!pending)return "";
    const r=pending.report;
@@ -412,7 +362,7 @@
      (current?'<p class="money-help">Compared with Command: '+diff.added+' new IDs, '+diff.changed+' changed records, '+diff.unchanged+' unchanged, '+diff.missing+' MISSING from this export.</p>':'')+
      (diff.missing?'<p class="money-warning">This export omits previously imported transactions. Import is blocked to protect existing history.</p>':'')+
      (diff.archivedRestored?'<p class="money-warning">This export contains archived records. Re-import is blocked to preserve your archive decisions.</p>':'')+
-     (record?.editedAt&&diff.changed?'<p class="money-warning">This export would overwrite '+diff.changed+' locally edited transactions. Import is blocked until conflict merging is supported.</p>':'')+
+     (record?.editedAt&&!same?'<p class="money-warning">This export would replace locally edited budgets, schedules or transactions. Import is blocked until conflict merging is supported.</p>':'')+
      '<div class="money-compare"><div><span>Income</span><strong>'+cents(r.income)+'</strong></div>'+
      '<div><span>Expenses</span><strong>'+cents(r.expense)+'</strong></div>'+
      '<div><span>Transfers (not spending)</span><strong>'+cents(r.transfer)+'</strong></div>'+
@@ -422,10 +372,98 @@
      (potentiallyIncomplete?'<p class="money-warning">This export has zero transactions. It may only contain settings, not full financial history.</p>':'')+
      '<p class="money-warning">Everyday is NOT changed. Importing makes an exact local copy; it does not merge entries, and it does not upload to Firebase. '+(record?'The previous Command finance copy is saved for recovery.':'')+'</p>'+
      (same?'<p class="money-ok">This file is already imported.</p>':
-       (diff.missing||diff.archivedRestored||(record?.editedAt&&diff.changed)?'<p>Review missing, archived or conflicting transactions before importing.</p>':
+       (diff.missing||diff.archivedRestored||(record?.editedAt&&!same)?'<p>Review missing, archived or conflicting finance data before importing.</p>':
        '<button class="button" data-money-action="confirm-import">Import this finance file</button>'))+'</section>';
  }
 
+
+ function planEditorStart(kind,id="",date="",defaultKind="expense"){
+   planEditor={kind,id,date,defaultKind};dispatch();
+   document.querySelector("#money-plan-editor")?.scrollIntoView({block:"nearest",behavior:"smooth"});
+ }
+ const planMoneyAmount=value=>moneyAmount(value);
+ function parseBalance(value){
+   const match=String(value||"").trim().match(/^(-)?(\d{1,8})(?:\.(\d{1,2}))?$/);
+   if(!match)throw Error("Enter a cash amount like 250.00 or -15.50.");
+   const n=(Number(match[2])*100+Number((match[3]||"").padEnd(2,"0")))*(match[1]?-1:1);
+   if(!Number.isSafeInteger(n)||Math.abs(n)>10000000000)throw Error("Cash amount is outside the supported range.");
+   return n;
+ }
+ async function markOccurrence(id,date,status){
+   if(!["paid","skipped","pending"].includes(status)||!iso(date))throw Error("Invalid scheduled date.");
+   const r=record?.data.budgetPlan.schedules.find(x=>x.id===id);
+   if(!r||!window.CommandMoneyPlanning.occurs(r,date))throw Error("That scheduled occurrence doesn't exist.");
+   const next=structuredClone(record.data);
+   const target=next.budgetPlan.schedules.find(x=>x.id===id);
+   if(status==="pending")delete target.occurrences[date];
+   else target.occurrences[date]=status;
+   await commitLedger(next,status==="pending"?"unmark occurrence":"mark occurrence "+status);
+ }
+ async function resetPaycheck(id,date){
+   const r=record?.data.budgetPlan.schedules.find(x=>x.id===id);
+   if(!r||r.kind!=="income"||!window.CommandMoneyPlanning.occurs(r,date))throw Error("Paycheck not found.");
+   const next=structuredClone(record.data);
+   delete next.budgetPlan.paycheckAmounts[id+"|"+date];
+   await commitLedger(next,"reset paycheck override");
+   planEditor=null;
+ }
+ async function removeLimit(category){
+   if(!record.data.budgetPlan.categoryLimits.some(x=>x.category===category))throw Error("Budget limit not found.");
+   if(!confirm("Remove the "+category+" monthly limit? Existing transactions keep their categories."))return;
+   const next=structuredClone(record.data);
+   next.budgetPlan.categoryLimits=next.budgetPlan.categoryLimits.filter(x=>x.category!==category);
+   await commitLedger(next,"remove category limit");
+   planEditor=null;
+ }
+ async function savePlanForm(form){
+   if(!record||!verified)throw Error("Money must be locally verified before editing.");
+   const kind=form.dataset.planKind,values=Object.fromEntries(new FormData(form).entries());
+   const next=structuredClone(record.data),plan=next.budgetPlan;
+   if(kind==="schedule"){
+     const name=String(values.name||"").trim(),type=String(values.kind||"");
+     const frequency=String(values.frequency||""),first=String(values.startDate||"");
+     const end=String(values.endDate||"");
+     if(!name||name.length>120||!["expense","income"].includes(type)||
+        !["once","weekly","biweekly","monthly"].includes(frequency)||!iso(first)||
+        end&&(!iso(end)||end<first))throw Error("Check the name, type, frequency, and dates.");
+     const amountCents=planMoneyAmount(values.amount);
+     const id=String(values.id||"");
+     const prior=id?plan.schedules.find(r=>r.id===id):null;
+     if(id&&!prior)throw Error("This recurring plan no longer exists.");
+     if(!prior&&plan.schedules.length>=250)throw Error("The schedule limit has been reached.");
+     if(prior&&(prior.startDate!==first||prior.frequency!==frequency||prior.kind!==type)&&
+        Object.keys(prior.occurrences).length>0&&
+        !confirm("This changes a repeat rule that has saved Paid or Skipped markers. Those markers will be kept on their original dates. Continue?"))return;
+     const edited={...(prior||{}),id:prior?.id||makeId(),name,kind:type,amountCents,startDate:first,frequency,
+       occurrences:prior?.occurrences||{}};
+     if(end)edited.endDate=end;else delete edited.endDate;
+     if(prior)plan.schedules=plan.schedules.map(x=>x.id===id?edited:x);
+     else plan.schedules.push(edited);
+   }else if(kind==="limit"){
+     const original=String(values.originalCategory||"");
+     const category=String(values.category||"").trim();
+     if(!category||category.length>80)throw Error("Enter a category (80 characters max).");
+     const amountCents=planMoneyAmount(values.amount);
+     const prior=plan.categoryLimits.find(x=>x.category===original);
+     if(original&&!prior)throw Error("Budget category was changed elsewhere.");
+     if(plan.categoryLimits.some(x=>x.category.toLocaleLowerCase()===category.toLocaleLowerCase()&&x.category!==original))
+       throw Error("A budget limit already exists for that category.");
+     if(prior)plan.categoryLimits=plan.categoryLimits.map(x=>x.category===original?{category,amountCents}:x);
+     else plan.categoryLimits.push({category,amountCents});
+   }else if(kind==="balance"){
+     if(!iso(values.asOf)||values.asOf>day())throw Error("Choose today or an earlier date for the cash balance.");
+     plan.balanceCents=parseBalance(values.balance);
+     plan.balanceAsOf=values.asOf;
+   }else if(kind==="override"){
+     const id=String(values.id||""),date=String(values.date||"");
+     const r=plan.schedules.find(x=>x.id===id);
+     if(!r||r.kind!=="income"||!window.CommandMoneyPlanning.occurs(r,date))
+       throw Error("That paycheck occurrence is no longer scheduled.");
+     plan.paycheckAmounts[id+"|"+date]=planMoneyAmount(values.amount);
+   }else throw Error("Unknown planning form.");
+   await commitLedger(next,"update "+kind);
+   planEditor=null;dispatch();
+ }
  function cloudRecord(){
    const cloud=window.CommandCloud;
    if(!cloud?.ready||!cloud.user)return null;
@@ -510,7 +548,7 @@
    const verification=section("Import integrity",'<span class="money-verified">'+(verified?"Local copy verified":"Checking saved copy")+'</span>',
      '<p class="money-help">'+r.transactions+' original IDs · '+r.rules+' classification rules · '+r.schedules+' recurring items · '+r.categoryLimits+' limits · '+r.unresolvedBank+' unresolved bank rows.</p>'+
      '<p class="money-help">Imported '+e(record.importedAt.slice(0,10))+' from '+e(record.sourceFilename)+'. '+(currentCloud?'Google backup matches this copy ('+e(currentCloud.verifiedAt.slice(0,10))+').':'Changes are not backed up to Google yet, or backup not verified.')+'</p>'+
-     (record.editedAt?'<p class="money-help">Last local transaction change: '+e(record.editedAt.slice(0,16).replace("T"," "))+'. Back up again after editing.</p>':'')+
+     (record.editedAt?'<p class="money-help">Last local Money change: '+e(record.editedAt.slice(0,16).replace("T"," "))+'. Back up again after editing.</p>':'')+
      (r.archived?'<p class="money-help">'+r.archived+' archived transactions retained for recovery.</p>':'')
    );
    const nav='<div class="money-subnav">'+[["overview","Overview"],["history","History"],["bills","Bills"],["budgets","Budgets"]].map(([key,name])=>
@@ -521,13 +559,18 @@
    else if(view==="budgets")body=budgetView(f);
    else{
      const p=summary(f,span),balance=f.budgetPlan.balanceCents;
+     const forecast=window.CommandMoneyPlanning.forecast(f,day(),35);
      body='<section class="money-section"><div class="section-head"><h2>Planned cash flow</h2><div class="money-period"><button data-money-action="span" data-days="7" class="'+(span===7?'active':'')+'">1 week</button><button data-money-action="span" data-days="14" class="'+(span===14?'active':'')+'">2 weeks</button></div></div>'+
-       '<p class="money-help">'+e(p.start)+' – '+e(p.end)+'. Pending scheduled income and bills, less purchases logged in this period. This is NOT your bank balance.</p>'+
+       '<p class="money-help">'+e(p.start)+' – '+e(p.end)+'. Pending scheduled income − unpaid bills − purchases without a linked bill. Linked bill purchases are not counted twice. This is not your bank balance.</p>'+
        '<div class="money-stats">'+card("Expected income",cents(p.income),"")+
        card("Scheduled bills","−"+cents(p.bills),"")+
        card("Purchases","−"+cents(p.purchases),"")+
        card("Period remainder",cents(p.available),"Expected − Bills − Purchases")+'</div>'+
-       (balance!==null?'<p class="money-help">Manual balance: '+cents(balance)+' as of '+e(f.budgetPlan.balanceAsOf)+'. Not added to projected income.</p>':'')+'</section>'+
+       (balance!==null?'<p class="money-help">Manually entered cash: '+cents(balance)+' as of '+e(f.budgetPlan.balanceAsOf)+'. '+
+         (forecast.configured?'35-day projected low: '+cents(forecast.minimumCents)+'.':'Update the cash balance to refresh the forecast.')+
+         (forecast.stale?' This cash balance is from an earlier day.':'')+'</p>':'')+
+       (p.linked?'<p class="money-help">'+p.linked+' linked bill'+(p.linked===1?'':'s')+' already settled by a recorded purchase.</p>':'')+
+       '</section>'+
        section("Overview",'<span class="muted">'+r.transactions+' transactions</span>',
        '<div class="money-stats">'+card("Bank records",String(r.bankTransactions),"")+
        card("Receipt itemizations",String(r.receipts),"")+
@@ -551,6 +594,19 @@
    if(!button)return;
    const action=button.dataset.moneyAction;
    try{
+     if(action==="plan-add-schedule"){planEditorStart("schedule");return;}
+     if(action==="plan-edit-schedule"){planEditorStart("schedule",button.dataset.id);return;}
+     if(action==="plan-add-limit"){planEditorStart("limit");return;}
+     if(action==="plan-edit-limit"){planEditorStart("limit",button.dataset.id);return;}
+     if(action==="plan-edit-balance"){planEditorStart("balance");return;}
+     if(action==="plan-adjust-paycheck"){planEditorStart("override",button.dataset.id,button.dataset.date);return;}
+     if(action==="plan-cancel"){planEditor=null;dispatch();return;}
+     if(action==="plan-mark-paid"||action==="plan-mark-skipped"||action==="plan-mark-pending"){
+       await markOccurrence(button.dataset.id,button.dataset.date,action==="plan-mark-paid"?"paid":action==="plan-mark-skipped"?"skipped":"pending");
+       dispatch();return;
+     }
+     if(action==="plan-reset-paycheck"){await resetPaycheck(button.dataset.id,button.dataset.date);dispatch();return;}
+     if(action==="plan-delete-limit"){await removeLimit(button.dataset.id);dispatch();return;}
      if(action==="pick-file")document.querySelector("#money-import-input")?.click();
      if(action==="new-transaction"){view="history";showArchived=false;editId="new";dispatch();document.querySelector("#money-tx-editor")?.scrollIntoView({block:"start"});return;}
      if(action==="edit-transaction"){view="history";showArchived=false;editId=button.dataset.id;dispatch();document.querySelector("#money-tx-editor")?.scrollIntoView({block:"start"});return;}
@@ -559,7 +615,7 @@
      if(action==="archive-transaction"){await archiveTransaction(button.dataset.id);return;}
      if(action==="restore-transaction"){await restoreTransaction(button.dataset.id);return;}
      if(action==="cancel-preview"){pending=null;dispatch();}
-     if(action==="subview"){view=button.dataset.subview;page=0;editId=null;dispatch();}
+     if(action==="subview"){view=button.dataset.subview;page=0;editId=null;planEditor=null;dispatch();}
      if(action==="span"){span=Number(button.dataset.days)===14?14:7;dispatch();}
      if(action==="prev-page"){page=Math.max(0,page-1);dispatch();}
      if(action==="next-page"){page++;dispatch();}
@@ -591,6 +647,12 @@
    if(results&&record)results.innerHTML=historyRows(record.data);
  });
  document.addEventListener("submit",async event=>{
+   if(event.target?.id==="money-plan-form"){
+     event.preventDefault();
+     try{await savePlanForm(event.target);}
+     catch(error){alert("Planning update not saved: "+error.message);}
+     return;
+   }
    if(event.target?.id!=="money-transaction-form")return;
    event.preventDefault();
    try{

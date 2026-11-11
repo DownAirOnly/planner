@@ -25,7 +25,7 @@
  function scheduleEditor(plan,editing){
    if(!editing||editing.kind!=="schedule")return "";
    const r=plan.schedules.find(x=>x.id===editing.id);
-   const f=r||{name:"",kind:editing.defaultKind||"expense",amountCents:0,startDate:new Date().toLocaleDateString("en-CA"),frequency:editing.defaultKind==="income"?"biweekly":"monthly",endDate:"",occurrences:{}};
+   const f=r||{name:"",kind:editing.defaultKind||"expense",amountCents:0,startDate:(()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-")})(),frequency:editing.defaultKind==="income"?"biweekly":"monthly",endDate:"",occurrences:{}};
    const frequency=[["once","Once"],["weekly","Weekly"],["biweekly","Every 2 weeks"],["monthly","Monthly"]];
    return '<section class="money-plan-editor" id="money-plan-editor"><div class="section-head"><h2>'+(r?"Edit schedule":"New schedule")+'</h2>'+
      '<button data-money-action="plan-cancel">Cancel</button></div><form id="money-plan-form" data-plan-kind="schedule"><input name="id" type="hidden" value="'+e(r?.id||"")+'">'+

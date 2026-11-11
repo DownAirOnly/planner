@@ -213,3 +213,55 @@ html,body{background:var(--bg)}
 .money-backup-reminder strong{font-size:12px}
 .money-backup-reminder p{color:var(--muted);font-size:11px;line-height:1.5;margin:6px 0 10px}
 .money-backup-reminder .button{font-size:12px}
+
+/* v30: planning and bills retain compact density and full-width touch targets. */
+.money-plan-field{display:flex;flex-direction:column;min-width:0;gap:6px;color:var(--muted);font-size:11px;font-weight:700}
+.money-plan-field input,.money-plan-field select{width:100%;min-width:0;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;color:var(--text);background:var(--panel);box-sizing:border-box}
+.money-plan-field input[type=hidden]{display:none}
+.money-plan-editor{border:1px solid #587f70;border-radius:14px;padding:14px;margin:14px 0;background:#172625}
+.money-plan-editor>.section-head{margin-bottom:12px}
+.money-plan-editor>.section-head h2{font-size:16px}
+.money-plan-editor>.section-head button{color:var(--mint);border:0;background:none;font-size:12px}
+.money-plan-editor form{display:grid;gap:12px}
+.money-plan-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:5px}
+.money-plan-editor-actions{display:flex;gap:8px;flex-wrap:wrap}
+.money-plan-occurrences,.money-plan-schedules{border:1px solid var(--line);border-radius:13px;background:var(--panel);overflow:hidden}
+.money-plan-occurrence{padding:11px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:9px}
+.money-plan-occurrence:last-child{border-bottom:0}
+.money-plan-occurrence-copy{min-width:0;display:grid;gap:4px}
+.money-plan-occurrence-copy small{font-size:10px;color:var(--muted)}
+.money-plan-occurrence-copy strong{font-size:13px}
+.money-plan-occurrence-copy span{font-size:12px}
+.money-plan-occurrence-copy span.income{color:var(--mint)}
+.money-plan-occurrence-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px}
+.money-plan-occurrence-actions button,.money-plan-schedule button,.money-budget-actions button{background:var(--panel2);color:var(--text);border:1px solid var(--line);padding:8px;border-radius:9px;font-size:11px;white-space:nowrap}
+.money-plan-occurrence-actions button:first-child{background:#294c41}
+.money-plan-occurrence.settled{opacity:.78}
+.money-plan-linked{font-size:10px;color:var(--muted)}
+.money-plan-drawer{margin:10px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.money-plan-drawer summary{padding:12px;font-size:12px;font-weight:700;cursor:pointer}
+.money-plan-drawer .money-plan-occurrences{border:0;border-top:1px solid var(--line);border-radius:0}
+.money-plan-schedule{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:12px;border-bottom:1px solid var(--line)}
+.money-plan-schedule:last-child{border-bottom:0}
+.money-plan-schedule div{min-width:0}
+.money-plan-schedule strong{font-size:12px}
+.money-plan-schedule small{display:block;color:var(--muted);font-size:10px;margin-top:4px;overflow-wrap:anywhere}
+.money-plan-schedule b{font-size:12px;white-space:nowrap}
+.money-budget-actions{display:flex;align-items:center;justify-content:space-between;margin-top:9px;gap:10px}
+.money-budget-actions small{font-size:11px;color:var(--muted)}
+.money-plan-cash{display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--panel);border:1px solid var(--line);padding:14px;border-radius:12px}
+.money-plan-cash div{display:grid;gap:3px}
+.money-plan-cash span,.money-plan-cash small{color:var(--muted);font-size:11px}
+.money-plan-cash strong{font-size:22px}
+.money-plan-cash-forecast{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:10px 0}
+.money-plan-cash-forecast div{display:grid;gap:5px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--panel)}
+.money-plan-cash-forecast small{font-size:10px;color:var(--muted)}
+.money-plan-cash-forecast strong{font-size:16px}
+.money-plan-warning{font-size:11px;line-height:1.5;color:#e8bd81}
+@media(max-width:450px){
+ .money-plan-form-grid{grid-template-columns:1fr}
+ .money-plan-occurrence{align-items:flex-start}
+ .money-plan-occurrence-actions{max-width:120px}
+ .money-plan-schedule{grid-template-columns:minmax(0,1fr) auto}
+ .money-plan-schedule button{grid-column:2}
+}

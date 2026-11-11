@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 29;
+  const APP_VERSION = 30;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
