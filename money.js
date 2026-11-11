@@ -139,6 +139,8 @@
      throw Error("The selected export is missing "+pending.diff.missing+" previously imported transaction IDs. No records were changed. Export a newer, complete Everyday finance file.");
    if(pending.diff?.archivedRestored)
      throw Error("This export would restore archived transactions. Review the archived records before replacing Money data.");
+   if(record?.editedAt&&pending.diff?.changed)
+     throw Error("This Everyday export would overwrite "+pending.diff.changed+" transactions edited in Command. Export your current Money backup first; safe conflict merging is not yet implemented.");
    if(record?.sha256===pending.sha256){pending=null;dispatch();return;}
    // No automatic merge or overwrite: an updated export has to be consciously
    // reviewed, and the previous local copy is preserved for recovery.
@@ -291,6 +293,9 @@
    delete saved.report;
    const serialized=JSON.stringify(saved),previous=localStorage.getItem(KEY);
    if(!previous)throw Error("Finance storage is missing; nothing was changed.");
+   const current=JSON.parse(previous);
+   if(current.sha256!==record.sha256)
+     throw Error("Money changed in another tab or device view. Reload Money before editing further; no records were overwritten.");
    // Require a recovery snapshot, then write and compare the new data.
    // If storage quota is reached, the original record remains untouched.
    localStorage.setItem(RECOVERY,previous);
@@ -407,6 +412,7 @@
      (current?'<p class="money-help">Compared with Command: '+diff.added+' new IDs, '+diff.changed+' changed records, '+diff.unchanged+' unchanged, '+diff.missing+' MISSING from this export.</p>':'')+
      (diff.missing?'<p class="money-warning">This export omits previously imported transactions. Import is blocked to protect existing history.</p>':'')+
      (diff.archivedRestored?'<p class="money-warning">This export contains archived records. Re-import is blocked to preserve your archive decisions.</p>':'')+
+     (record?.editedAt&&diff.changed?'<p class="money-warning">This export would overwrite '+diff.changed+' locally edited transactions. Import is blocked until conflict merging is supported.</p>':'')+
      '<div class="money-compare"><div><span>Income</span><strong>'+cents(r.income)+'</strong></div>'+
      '<div><span>Expenses</span><strong>'+cents(r.expense)+'</strong></div>'+
      '<div><span>Transfers (not spending)</span><strong>'+cents(r.transfer)+'</strong></div>'+
@@ -416,7 +422,7 @@
      (potentiallyIncomplete?'<p class="money-warning">This export has zero transactions. It may only contain settings, not full financial history.</p>':'')+
      '<p class="money-warning">Everyday is NOT changed. Importing makes an exact local copy; it does not merge entries, and it does not upload to Firebase. '+(record?'The previous Command finance copy is saved for recovery.':'')+'</p>'+
      (same?'<p class="money-ok">This file is already imported.</p>':
-       (diff.missing||diff.archivedRestored?'<p>Review the missing or archived records before importing.</p>':
+       (diff.missing||diff.archivedRestored||(record?.editedAt&&diff.changed)?'<p>Review missing, archived or conflicting transactions before importing.</p>':
        '<button class="button" data-money-action="confirm-import">Import this finance file</button>'))+'</section>';
  }
 
@@ -494,7 +500,8 @@
      (record?'<button class="button secondary" data-money-action="export-finance">Export Money JSON</button><button class="button secondary" data-money-action="export-audit">Audit report</button>':'')+
      '<button class="button secondary" data-money-action="cloud-check">Check cloud backup</button>'+
      (record?'<button class="button secondary" data-money-action="cloud-backup">Back up to Firebase</button>':'')+'</div>';
-   const header='<div class="money-header"><div><h1>Money</h1><p>Your paychecks, purchases, bills and budgets</p></div></div>';
+   const header='<div class="money-header"><div><h1>Money</h1><p>Your paychecks, purchases, bills and budgets</p></div>'+
+     (record?'<button class="button money-new-quick" data-money-action="new-transaction">+ Transaction</button>':'')+'</div>';
    if(error)return header+'<div class="money-warning">'+e(error)+'</div>'+importControls;
    if(!record)return header+importControls+previewView()+
      '<div class="money-empty"><strong>No finances imported yet</strong><p>In Everyday, export the <b>Finances JSON</b> section. Choose that file here to see a verification report before saving. Your work schedule and existing Command data will remain untouched.</p></div>';
@@ -526,7 +533,11 @@
        card("Receipt itemizations",String(r.receipts),"")+
        card("Monthly limits",String(r.categoryLimits),"")+'</div>');
    }
-   return header+importControls+previewView()+nav+body+verification;
+   const needsBackup=record.editedAt&&!currentCloud;
+   const backupReminder=needsBackup?'<div class="money-backup-reminder" role="status"><strong>Local money changes need a fresh cloud backup</strong>'+
+     '<p>Your last verified Firebase copy is still available. New edits are on this device until you back them up.</p>'+
+     '<button class="button secondary" data-money-action="cloud-backup">Back up changes</button></div>':'';
+   return header+backupReminder+importControls+previewView()+nav+body+verification;
  }
  async function onFile(file){
    if(!file)return;

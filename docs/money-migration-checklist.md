@@ -32,3 +32,12 @@
 - Dates, IDs and all unknown original finance fields are preserved on import; no transaction classifications are silently rewritten.
 
 **Do not delete or reset Everyday finances during this stage.**
+
+## v29 — local transaction management
+
+- Money → History supports merchant/description/bank-text search, month/type/category filters, new transactions, and edits.
+- Original imported bank amount, bank posting date, statement text and external bank IDs are immutable in the editor. Receipt line-item names/categories can be revised while retaining their item amounts and reconciled receipt total.
+- Archive is reversible and excludes that record from active income/expense totals; archived IDs and original record fields are preserved in the finance backup. Archived entries cannot be silently reintroduced by an Everyday re-import.
+- Every transaction save first snapshots the previous whole local finance state for recovery, validates the entire edited ledger, hashes it, and verifies its saved bytes. A stale copy from another tab cannot overwrite a newer local checksum.
+- Re-import of Everyday data is blocked if it would overwrite edited Command transactions; future safe merge requires a separate design.
+- Local changes invalidate the prior cloud verification until the owner manually backs up and verifies again. No automatic cloud sync is represented as active.

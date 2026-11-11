@@ -205,3 +205,11 @@ html,body{background:var(--bg)}
  .money-receipt-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
  .money-receipt-row strong{grid-column:1/-1;padding:0}
 }
+
+/* v29: fast finance capture + visible protection for unsynced local edits. */
+.money-header{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.money-new-quick{flex:none;font-size:12px;white-space:nowrap;padding:10px}
+.money-backup-reminder{border:1px solid #537f6e;border-radius:13px;padding:12px 14px;background:#172924;margin:0 0 15px}
+.money-backup-reminder strong{font-size:12px}
+.money-backup-reminder p{color:var(--muted);font-size:11px;line-height:1.5;margin:6px 0 10px}
+.money-backup-reminder .button{font-size:12px}
