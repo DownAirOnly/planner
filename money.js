@@ -801,6 +801,7 @@
      '<div class="money-empty"><strong>No finances imported yet</strong><p>In Everyday, export the <b>Finances JSON</b> section. Choose that file here to see a verification report before saving. Your work schedule and existing Command data will remain untouched.</p></div>';
    const f=record.data,r=record.report;
    const currentCloud=cloudRecord();
+   const syncCurrent=window.CommandMoneySync?.isCurrent?.(record.sha256)===true;
    const verification=section("Import integrity",'<span class="money-verified">'+(verified?"Local copy verified":"Checking saved copy")+'</span>',
      '<p class="money-help">'+r.transactions+' original IDs · '+r.rules+' classification rules · '+r.schedules+' recurring items · '+r.categoryLimits+' limits · '+r.unresolvedBank+' unresolved bank rows.</p>'+
      '<p class="money-help">Imported '+e(record.importedAt.slice(0,10))+' from '+e(record.sourceFilename)+'. '+
@@ -836,7 +837,6 @@
        card("Receipt itemizations",String(r.receipts),"")+
        card("Monthly limits",String(r.categoryLimits),"")+'</div>');
    }
-   const syncCurrent=window.CommandMoneySync?.isCurrent?.(record.sha256)===true;
    const needsBackup=record.editedAt&&!currentCloud&&!syncCurrent;
    const backupReminder=needsBackup?'<div class="money-backup-reminder" role="status"><strong>Local money changes need a fresh cloud backup</strong>'+
      '<p>Your last verified Firebase copy is still available. New edits are on this device until you back them up.</p>'+
