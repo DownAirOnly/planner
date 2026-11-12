@@ -542,3 +542,11 @@ html,body{background:var(--bg)}
  .moneys-quick button{font-size:10px;padding:11px 2px}
  .moneys-bills-hero{padding:13px}
 }
+
+/* v36: visible only when a linked Money device needs recovery attention. */
+.moneys-sync-warning{border:1px solid #ac805e;border-radius:14px;padding:12px 14px;
+ background:#342a26;display:flex;gap:6px;flex-direction:column}
+.moneys-sync-warning strong{font-size:13px;color:#f0cc9c}
+.moneys-sync-warning span{font-size:11px;line-height:1.5;color:#d9c4ad}
+.moneys-sync-warning button{align-self:start;background:none;border:0;color:#f0cc9c;
+ font-size:12px;font-weight:750;padding:6px 0}

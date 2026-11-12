@@ -43,3 +43,14 @@ Command has the main financial workflows from Everyday. The code-level checks co
 - The source retirement/removal has not been performed. This is deliberate.
 
 **Never publish real bank data or exported finance JSON to this public GitHub repository.**
+
+## v36 — visible Money redesign
+
+- A time-to-decision approach: four main screens only — Overview, Spending, Transactions, Bills. Advanced Bank CSV, bank reconciliation, archives, classification rules, detailed budgets, import, manual/cloud sync and audits remain under a single **Manage Money** entry, not repeated on every screen.
+- Overview shows the user-supplied cash balance, minus unsettled bills due before the next scheduled payday. If no cash balance is saved, it requests one. If the balance date is not today, it clearly identifies the number as an estimate requiring an update; it is not a live bank feed.
+- Spending shows 7-, 30-, 90-day actual transaction totals, itemized category splits, top merchants and only verifiable period-over-period patterns.
+- Transactions has everyday type/category/month and review filters with the existing editor and archive/recovery behavior.
+- Bills & Paychecks shows this-check/next-check allocations, upcoming unpaid bills, and a non-recording what-if calculation. Detailed scheduling/marking stays one level below in Manage Money.
+- Firebase synchronization conflicts remain visible from the main Money screens; opting in and backups still require explicit user action.
+- v35 fixed a Money rendering failure where a sync-status constant was referenced before initialization.
+- Existing finances, import/backup formats and cloud records are not rewritten by this visual redesign. Real iPhone verification is still necessary.
