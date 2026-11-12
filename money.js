@@ -836,7 +836,12 @@
    const primary=["overview","insights","history","bills"].includes(view);
    const foot=outdated?'<div class="moneys-backup-note">You have changes that need a verified cloud backup. '+
      '<button data-money-action="subview" data-subview="manage">Manage backups</button></div>':"";
-   return primary?ui.shell(title,view,body)+foot:
+   const sync=window.CommandMoneySync?.getStatus?.();
+   const syncIssue=sync?.enabled&&["conflict","needs-restore","error"].includes(sync.status)?
+     '<div class="moneys-sync-warning" role="status"><strong>Money sync needs attention</strong>'+
+     '<span>'+e(sync.message||"Your local finance copy has been preserved.")+'</span>'+
+     '<button data-money-action="subview" data-subview="manage">Review sync</button></div>':'';
+   return primary?ui.shell(title,view,syncIssue+body)+foot:
      '<div class="moneys-shell">'+body+'</div>';
  }
  async function onFile(file){

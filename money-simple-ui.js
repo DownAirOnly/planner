@@ -82,7 +82,8 @@ const titleBar=(title)=>'<div class="moneys-title"><h1>'+title+'</h1>'+
    '<button data-money-action="subview" data-subview="manage" aria-label="Manage Money" title="Manage Money">'+icon("settings")+'</button></div>';
 function overview(f,today){
  const w=scheduleWindow(f,today),month=today.slice(0,7);
- const spending=categorize(f.transactions,month+"-01",dateShift(month+"-01",35).slice(0,7)==month?dateShift(month+"-01",35):new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10));
+ const endOfMonth=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10);
+ const spending=categorize(f.transactions,month+"-01",endOfMonth);
  const count=reviewCount(f.transactions);
  const hero='<section class="moneys-hero">'+
    '<span>Available now'+(w.stale?'<em>Update needed</em>':'')+'</span>'+
@@ -98,7 +99,7 @@ function overview(f,today){
  const essentials='<div class="moneys-two">'+summaryCard("Bills before payday",USD(w.reserved),w.bills.length+" outstanding")+
    summaryCard("Next paycheck",pay,paySub)+'</div>';
  return hero+essentials+
-   '<section class="moneys-surface moneys-tappable" data-money-action="noop">'+cardTitle("Where it's going","insights","This month")+
+   '<section class="moneys-surface">'+cardTitle("Where it's going","insights","This month")+
      categoryBars(spending.groups,4,true)+'</section>'+
    '<section class="moneys-surface">'+cardTitle("Recent spending","history","See all")+recent(f,3)+'</section>'+
    needReview(count)+
