@@ -121,6 +121,7 @@
  let classEditing=null,classReview=false;
  let csvMode="bank",csvPending=null,insightPeriod="30d",reviewFilter="all";
  let paycheckCount=1,whatIf={input:"",amountCents:null};
+ let spendPeriod="30d",billCheckIndex=0,newKind="expense";
  function read(){
    const raw=localStorage.getItem(KEY);
    if(!raw){record=null;return;}
@@ -190,7 +191,7 @@
    const original=editId==="new"?null:f.transactions.find(t=>t.id===editId);
    if(editId!=="new"&&!original){editId=null;return "";}
    const bank=!!original?.bankDescription,lockedAmount=bank||!!original?.items?.length;
-   const d=original||{date:day(),kind:"expense",amountCents:0,description:"",category:"Uncategorized"};
+   const d=original||{date:day(),kind:newKind,amountCents:0,description:"",category:"Uncategorized"};
    const catList='<datalist id="money-categories">'+categories(f).map(c=>'<option value="'+e(c)+'"></option>').join("")+'</datalist>';
    const formInput=(label,name,val,type="text",extra="")=>
      '<label class="money-tx-field"><span>'+label+'</span><input name="'+name+'" type="'+type+'" value="'+e(val)+'" '+extra+'></label>';
@@ -345,7 +346,9 @@
    if(kindFilter!=="all")rows=rows.filter(t=>t.kind===kindFilter);
    if(categoryFilter!=="all")rows=rows.filter(t=>t.category===categoryFilter);
    if(reviewFilter==="uncategorized")rows=rows.filter(t=>!t.category||t.category.toLowerCase()==="uncategorized");
-   else if(reviewFilter==="needs-review")rows=rows.filter(t=>window.CommandMoneyBankImport.financeReviewFlags(t).length>0);
+   else if(reviewFilter==="needs-review")rows=rows.filter(t=>
+     !t.category||t.category.toLowerCase()==="uncategorized"||
+     window.CommandMoneyBankImport.financeReviewFlags(t).length>0);
    const q=search.trim().toLocaleLowerCase();
    if(q)rows=rows.filter(t=>[
      t.description,t.merchant,t.category,t.subcategory,t.bankDescription,
@@ -787,61 +790,54 @@
    alert("Cloud money restored and verified. Everyday's data was not touched.");
  }
  function render(){
-   const importControls='<input id="money-import-input" type="file" accept=".json,application/json" hidden>'+
-     '<div class="money-actions"><button class="button" data-money-action="pick-file">Import Everyday finance</button>'+
-     (record?'<button class="button secondary" data-money-action="export-finance">Export Money JSON</button><button class="button secondary" data-money-action="export-audit">Audit report</button>':'')+
-     '<button class="button secondary" data-money-action="cloud-check">Check cloud backup</button>'+
-     (record?'<button class="button secondary" data-money-action="cloud-backup">Back up to Firebase</button>':'')+'</div>';
-   const syncControls='<div id="money-sync-panel">'+(window.CommandMoneySync?.renderControls?.()||
-     '<div class="money-help">Money sync is initializing…</div>')+'</div>';
-   const header='<div class="money-header"><div><h1>Money</h1><p>Your paychecks, purchases, bills and budgets</p></div>'+
-     (record?'<button class="button money-new-quick" data-money-action="new-transaction">+ Transaction</button>':'')+'</div>';
-   if(error)return header+syncControls+'<div class="money-warning">'+e(error)+'</div>'+importControls;
-   if(!record)return header+syncControls+importControls+previewView()+
-     '<div class="money-empty"><strong>No finances imported yet</strong><p>In Everyday, export the <b>Finances JSON</b> section. Choose that file here to see a verification report before saving. Your work schedule and existing Command data will remain untouched.</p></div>';
+   const ui=window.CommandMoneySimpleUI;
+   if(!ui)return '<div class="money-warning">The Money interface is still loading. Reopen Money to retry.</div>';
+   const syncControls=window.CommandMoneySync?.renderControls?.()||
+     '<p class="money-help">Sign in through Settings to configure Money sync.</p>';
+   const header=ui.advancedHeader("Money data");
+   const importControl='<input id="money-import-input" type="file" accept=".json,application/json" hidden>';
+   if(error)return header+'<div class="money-warning"><strong>Money needs recovery</strong><p>'+
+     e(error)+'</p><p>Your saved financial data has not been deliberately deleted. Do not reset or clear the app.</p></div>'+
+     importControl+'<button class="button" data-money-action="cloud-check">Check cloud backup</button>'+
+     '<button class="button secondary" data-money-action="pick-file">Import a verified finance JSON</button>'+
+     '<div id="money-sync-panel">'+syncControls+'</div>';
+   if(!record)return ui.advancedHeader("Set up Money","Your history and financial records can be imported without adding sample data.")+
+     '<div class="moneys-surface"><h2>No money records on this device</h2>'+
+     '<p>Import your existing Everyday Finances JSON or restore a verified Google Money backup.</p>'+
+     importControl+
+     '<div class="moneys-manage-actions"><button class="button" data-money-action="pick-file">Import finance JSON</button>'+
+     '<button class="button secondary" data-money-action="cloud-check">Check cloud backup</button></div>'+
+     previewView()+'</div><div id="money-sync-panel">'+syncControls+'</div>';
    const f=record.data,r=record.report;
-   const currentCloud=cloudRecord();
+   const localEditing=planEditor?window.CommandMoneyBillsUI.editor(f,planEditor):"";
    const syncCurrent=window.CommandMoneySync?.isCurrent?.(record.sha256)===true;
-   const verification=section("Import integrity",'<span class="money-verified">'+(verified?"Local copy verified":"Checking saved copy")+'</span>',
-     '<p class="money-help">'+r.transactions+' original IDs · '+r.rules+' classification rules · '+r.schedules+' recurring items · '+r.categoryLimits+' limits · '+r.unresolvedBank+' unresolved bank rows.</p>'+
-     '<p class="money-help">Imported '+e(record.importedAt.slice(0,10))+' from '+e(record.sourceFilename)+'. '+
-       (syncCurrent?'Automatic Google Money sync is current.':currentCloud?'Manual Google backup matches this copy ('+e(currentCloud.verifiedAt.slice(0,10))+').':'No verified cloud copy of the latest changes yet.')+'</p>'+
-     (record.editedAt?'<p class="money-help">Last local Money change: '+e(record.editedAt.slice(0,16).replace("T"," "))+'. Back up again after editing.</p>':'')+
-     (r.archived?'<p class="money-help">'+r.archived+' archived transactions retained for recovery.</p>':'')
-   );
-   const nav='<div class="money-subnav">'+[["overview","Overview"],["history","History"],["bills","Bills"],["budgets","Budgets"],["insights","Insights"],["import","Import"]].map(([key,name])=>
-     '<button class="'+(view===key?'active':'')+'" data-money-action="subview" data-subview="'+key+'">'+name+'</button>').join("")+'</div>';
-   let body="";
-   if(view==="history")body=transactionEditor(f)+section("Transactions",'<span class="muted">'+r.transactions+' active · '+r.archived+' archived</span>',recordsView(f));
-   else if(view==="import")body=csvView();
-   else if(view==="insights")body=window.CommandMoneyInsightsUI.render(f,insightPeriod,day());
-   else if(view==="bills")body=billsView(f);
-   else if(view==="budgets")body=budgetView(f)+renderClassification(f);
-   else{
-     const p=summary(f,span),balance=f.budgetPlan.balanceCents;
-     const forecast=window.CommandMoneyPlanning.forecast(f,day(),35);
-     body=window.CommandMoneyPaychecksUI.render(f,day(),paycheckCount,whatIf)+
-       '<section class="money-section"><div class="section-head"><h2>Planned cash flow</h2><div class="money-period"><button data-money-action="span" data-days="7" class="'+(span===7?'active':'')+'">1 week</button><button data-money-action="span" data-days="14" class="'+(span===14?'active':'')+'">2 weeks</button></div></div>'+
-       '<p class="money-help">'+e(p.start)+' – '+e(p.end)+'. Pending scheduled income − unpaid bills − purchases without a linked bill. Linked bill purchases are not counted twice. This is not your bank balance.</p>'+
-       '<div class="money-stats">'+card("Expected income",cents(p.income),"")+
-       card("Scheduled bills","−"+cents(p.bills),"")+
-       card("Purchases","−"+cents(p.purchases),"")+
-       card("Period remainder",cents(p.available),"Expected − Bills − Purchases")+'</div>'+
-       (balance!==null?'<p class="money-help">Manually entered cash: '+cents(balance)+' as of '+e(f.budgetPlan.balanceAsOf)+'. '+
-         (forecast.configured?'35-day projected low: '+cents(forecast.minimumCents)+'.':'Update the cash balance to refresh the forecast.')+
-         (forecast.stale?' This cash balance is from an earlier day.':'')+'</p>':'')+
-       (p.linked?'<p class="money-help">'+p.linked+' linked bill'+(p.linked===1?'':'s')+' already settled by a recorded purchase.</p>':'')+
-       '</section>'+
-       section("Overview",'<span class="muted">'+r.transactions+' transactions</span>',
-       '<div class="money-stats">'+card("Bank records",String(r.bankTransactions),"")+
-       card("Receipt itemizations",String(r.receipts),"")+
-       card("Monthly limits",String(r.categoryLimits),"")+'</div>');
-   }
-   const needsBackup=record.editedAt&&!currentCloud&&!syncCurrent;
-   const backupReminder=needsBackup?'<div class="money-backup-reminder" role="status"><strong>Local money changes need a fresh cloud backup</strong>'+
-     '<p>Your last verified Firebase copy is still available. New edits are on this device until you back them up.</p>'+
-     '<button class="button secondary" data-money-action="cloud-backup">Back up changes</button></div>':'';
-   return header+syncControls+backupReminder+importControls+previewView()+nav+body+verification;
+   const backup=cloudRecord();
+   const outdated=record.editedAt&&!syncCurrent&&!backup;
+   const integrity=verified?
+     r.transactions+' active transactions · '+r.archived+' archived · '+r.schedules+' scheduled bills and paychecks.':
+     'Checking your locally stored finance records.';
+   const manage=ui.management(f,{preview:previewView(),sync:syncControls,integrity});
+   const body=view==="overview"?
+     localEditing+ui.overview(f,day()):
+     view==="insights"?ui.spending(f,day(),spendPeriod):
+     view==="history"?ui.transactions(f,{
+       kind:kindFilter,month,search,review:reviewFilter,category:categoryFilter,archived:showArchived
+     },transactionEditor(f),historyRows(f)):
+     view==="bills"?
+       localEditing+ui.bills(f,day(),billCheckIndex,whatIf):
+     view==="manage"?manage:
+     view==="import"?ui.advancedHeader("Import and review","Advanced bank and receipt tools.")+csvView()+previewView():
+     view==="budgets"?ui.advancedHeader("Spending limits & rules","Monthly spending caps and transaction categorization.")+
+       budgetView(f)+renderClassification(f):
+     view==="bills-detail"?ui.advancedHeader("All bills & paychecks","Schedules, due dates, and assignments.")+billsView(f):
+     ui.overview(f,day());
+   const title=view==="insights"?"Spending":view==="history"?"Transactions":
+     view==="bills"?"Bills & paychecks":"Money";
+   const primary=["overview","insights","history","bills"].includes(view);
+   const foot=outdated?'<div class="moneys-backup-note">You have changes that need a verified cloud backup. '+
+     '<button data-money-action="subview" data-subview="manage">Manage backups</button></div>':"";
+   return primary?ui.shell(title,view,body)+foot:
+     '<div class="moneys-shell">'+body+'</div>';
  }
  async function onFile(file){
    if(!file)return;
@@ -855,6 +851,43 @@
    if(!button)return;
    const action=button.dataset.moneyAction;
    try{
+     if(action==="simple-period"){
+       spendPeriod=["7d","30d","90d"].includes(button.dataset.period)?button.dataset.period:"30d";
+       dispatch();return;
+     }
+     if(action==="simple-kind"){
+       kindFilter=["all","expense","income","transfer"].includes(button.dataset.kind)?button.dataset.kind:"all";
+       page=0;dispatch();return;
+     }
+     if(action==="simple-review"){
+       view="history";showArchived=false;reviewFilter="needs-review";
+       kindFilter="all";page=0;dispatch();return;
+     }
+     if(action==="simple-uncategorized"){
+       view="history";showArchived=false;reviewFilter="uncategorized";
+       kindFilter="expense";page=0;dispatch();return;
+     }
+     if(action==="simple-check"){
+       billCheckIndex=button.dataset.index==="1"?1:0;
+       whatIf={input:"",amountCents:null};dispatch();return;
+     }
+     if(action==="simple-balance"){
+       planEditorStart("balance");return;
+     }
+     if(action==="simple-add"||action==="simple-transfer"){
+       newKind=action==="simple-transfer"?"transfer":"expense";
+       view="history";showArchived=false;reviewFilter="all";
+       kindFilter="all";editId="new";dispatch();
+       document.querySelector("#money-tx-editor")?.scrollIntoView({block:"start"});
+       return;
+     }
+     if(action==="open-transaction"){
+       const tx=record?.data.transactions.find(t=>t.id===button.dataset.id);
+       if(!tx)throw Error("Transaction could not be found.");
+       view="history";showArchived=false;editId=tx.id;page=0;dispatch();
+       document.querySelector("#money-tx-editor")?.scrollIntoView({block:"start"});
+       return;
+     }
      if(action==="insights-uncategorized"){view="history";reviewFilter="uncategorized";page=0;dispatch();return;}
      if(action==="insights-needs-review"){view="history";reviewFilter="needs-review";page=0;dispatch();return;}
      if(action==="csv-mode"){csvMode=button.dataset.csvMode;csvPending=null;dispatch();return;}
@@ -896,14 +929,18 @@
      if(action==="plan-reset-paycheck"){await resetPaycheck(button.dataset.id,button.dataset.date);dispatch();return;}
      if(action==="plan-delete-limit"){await removeLimit(button.dataset.id);dispatch();return;}
      if(action==="pick-file")document.querySelector("#money-import-input")?.click();
-     if(action==="new-transaction"){view="history";showArchived=false;editId="new";dispatch();document.querySelector("#money-tx-editor")?.scrollIntoView({block:"start"});return;}
+     if(action==="new-transaction"){newKind="expense";view="history";showArchived=false;editId="new";dispatch();document.querySelector("#money-tx-editor")?.scrollIntoView({block:"start"});return;}
      if(action==="edit-transaction"){view="history";showArchived=false;editId=button.dataset.id;dispatch();document.querySelector("#money-tx-editor")?.scrollIntoView({block:"start"});return;}
      if(action==="cancel-edit"){editId=null;dispatch();return;}
      if(action==="toggle-archived"){showArchived=!showArchived;page=0;editId=null;dispatch();return;}
      if(action==="archive-transaction"){await archiveTransaction(button.dataset.id);return;}
      if(action==="restore-transaction"){await restoreTransaction(button.dataset.id);return;}
      if(action==="cancel-preview"){pending=null;dispatch();}
-     if(action==="subview"){view=button.dataset.subview;page=0;editId=null;planEditor=null;classEditing=null;classReview=false;csvPending=null;dispatch();}
+     if(action==="subview"){
+       view=["overview","history","insights","bills","bills-detail","budgets","import","manage"].includes(button.dataset.subview)?
+         button.dataset.subview:"overview";
+       page=0;editId=null;planEditor=null;classEditing=null;classReview=false;csvPending=null;dispatch();
+     }
      if(action==="span"){span=Number(button.dataset.days)===14?14:7;dispatch();}
      if(action==="prev-page"){page=Math.max(0,page-1);dispatch();}
      if(action==="next-page"){page++;dispatch();}
