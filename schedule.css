@@ -317,3 +317,7 @@
 .schedule-scheduled-agenda .section-head{margin-bottom:8px}
 .schedule-scheduled-agenda .section-head h2{font-size:16px}
 .schedule-scheduled-agenda .schedule-compact-list{margin-top:0}
+
+/* v38: date-required OCR rows remain review-only until completed */
+.schedule-proposed-row:has(input[type="date"][value=""]){border-color:#82644c}
+.schedule-proposed-row:has(input[type="date"][value=""]) .schedule-proposed-main>strong{color:#e9bd88}

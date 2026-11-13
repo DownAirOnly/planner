@@ -106,7 +106,7 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
    if([5,6,0,1,2].every(n=>usual.includes(n))&&usual.length===5)return "Fri–Tue";
    return workWeekOrder.filter(n=>usual.includes(n)).map(n=>DAYS[n]).join(", ");
  };
- const sortedDraft=rows=>(rows||[]).sort((a,b)=>String(a.date||"").localeCompare(String(b.date||""))||String(a.startTime||"").localeCompare(String(b.startTime||"")));
+ const sortedDraft=rows=>(rows||[]).sort((a,b)=>String(a.date||"9999-99-99").localeCompare(String(b.date||"9999-99-99"))||String(a.startTime||"").localeCompare(String(b.startTime||"")));
  const filter=e=>ui.domain==="all"||e.domain===ui.domain;
  const selectedEvents=(iso)=>events().filter(e=>filter(e)&&visibleOnDate(e,iso)).sort((a,b)=>(a.allDay?"":a.startTime).localeCompare(b.allDay?"":b.startTime));
  const dateEvents=(iso,domain)=>events().filter(e=>(!domain||e.domain===domain)&&visibleOnDate(e,iso)).sort((a,b)=>a.startTime.localeCompare(b.startTime));
@@ -359,14 +359,15 @@ function eventForm(item={}){
     const needsAttention=row=>!row.reviewed&&(row.estimatedDate||row.dateConfidence==="low"||!row.startTime||!row.endTime||row._include===false);
     draft.openReviewId=(found.find(row=>notDuplicate(row)&&needsAttention(row))||found.find(notDuplicate)||found[0])?.id||null;
   }
-  target.innerHTML=(found.length?'<div class="section-head schedule-review-heading"><h2>Proposed schedule</h2><span class="muted">'+found.length+' shift'+(found.length===1?"":"s")+'</span></div>'+
-    '<p class="schedule-hint">Check the shifts, then save. Tap Edit to change anything.</p>'+
+  const missingDates=found.filter(row=>!row.date).length,dated=found.length-missingDates;
+  target.innerHTML=(found.length?'<div class="section-head schedule-review-heading"><h2>Proposed schedule</h2><span class="muted">'+dated+' dated'+(missingDates?' · '+missingDates+' need date'+(missingDates===1?'':'s'):'')+'</span></div>'+
+    '<p class="schedule-hint">Confirm the schedule before saving. For a shift missing its date, tap Edit and enter the date, then check its box.</p>'+
     '<form id="schedule-import-form"><div class="schedule-import-preview">'+found.map((row,i)=>{
       const duplicate=existing.has([row.domain,row.date,row.startTime,row.endTime].join("|"));
       const confidence=(!row.startTime||!row.endTime)?"low":(row.dateConfidence|| (row.estimatedDate?"low":"medium"));
       const level=typeof confidence==="string"?confidence:"medium";
       const confText=row.reviewed?"Reviewed":(level==="high"?"High confidence":level==="medium"?"Medium confidence":"Low confidence");
-      const needsEdit=!row.startTime||!row.endTime;
+      const needsEdit=!row.date||!row.startTime||!row.endTime;
       const opened=row.id===draft.openReviewId;
       const detail=row.confidenceReason||(!row.startTime||!row.endTime?"Times could not be read":"Date and times found");
       const status=(!row.startTime||!row.endTime)?"Times need review":fmtTime(row);
@@ -376,7 +377,7 @@ function eventForm(item={}){
         '<div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div>');
       return '<div class="schedule-proposed-row" data-review-row="'+i+'">'+
         '<div class="schedule-proposed-top"><label class="schedule-proposed-check"><input type="checkbox" name="include-'+i+'" '+(duplicate||row._include===false||needsEdit?"":"checked")+' aria-label="Include shift '+(i+1)+'">'+
-          '<span class="schedule-proposed-main"><strong>'+esc(labelDate(row.date))+'</strong>'+
+          '<span class="schedule-proposed-main"><strong>'+esc(row.date?labelDate(row.date):"Date needed")+'</strong>'+
             '<span>'+esc(status)+'</span>'+
             '<small class="schedule-import-hours">'+esc(hours)+'</small>'+
             '<small class="schedule-work-summary'+zoneStyle(row)+'">'+esc(row.domain==="work"?workMeta(row):displayLocation(row))+'</small>'+
@@ -423,10 +424,9 @@ function eventForm(item={}){
   preserveReviewEdits();
   const row=draft.rows[index];
   if(forceClose){
-    row.reviewed=true;
-    row.estimatedDate=false;
-    row.assignmentEstimated=false;
-    row.locationEstimated=false;
+    const complete=!!(row.date&&row.startTime&&row.endTime);
+    row.reviewed=complete;row.estimatedDate=!complete;
+    if(complete){row.assignmentEstimated=false;row.locationEstimated=false;}
     const next=draft.rows.find((e,i)=>i!==index&&!e.reviewed&&
       (e.estimatedDate||e.dateConfidence==="low"||!e.startTime||!e.endTime||e._include===false));
     draft.openReviewId=next?.id||null;
@@ -472,8 +472,26 @@ function eventForm(item={}){
   }catch(err){console.warn("Top-of-screenshot scan skipped",err);return null;}
   finally{image?.close?.();}
  }
+ async function enhancedScreenshot(file,worker){
+  if(typeof createImageBitmap!=="function")return null;
+  let image;
+  try{
+   image=await createImageBitmap(file);
+   const scale=Math.min(1.8,2050/image.width);
+   if(scale<=1.02)return null;
+   const canvas=document.createElement("canvas");
+   canvas.width=Math.round(image.width*scale);canvas.height=Math.round(image.height*scale);
+   const ctx=canvas.getContext("2d");if(!ctx)return null;
+   ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);
+   ctx.filter="grayscale(100%) contrast(150%)";
+   ctx.drawImage(image,0,0,canvas.width,canvas.height);
+   return await worker.recognize(canvas,{}, {text:true,tsv:true});
+  }catch(error){console.warn("Enhanced screenshot read skipped",error);return null;}
+  finally{image?.close?.();}
+ }
  async function readScreenshots(){
-  const input=document.querySelector("#schedule-image-input"),status=document.querySelector("#schedule-ocr-status"),raw=document.querySelector("#schedule-raw-text");
+  const input=document.querySelector("#schedule-image-input"),status=document.querySelector("#schedule-ocr-status"),
+    raw=document.querySelector("#schedule-raw-text");
   const files=Array.from(input?.files||[]).filter(f=>f.type.startsWith("image/")).slice(0,5);
   if(!files.length){toast("Choose a screenshot first");return;}
   if(!status||!raw)return;
@@ -483,49 +501,65 @@ function eventForm(item={}){
   try{
    status.textContent="Loading text reader…";await loadTesseract();
    worker=await window.Tesseract.createWorker("eng");
-   const texts=[],detected=[];
+   const texts=[],detected=[],undated=[];
+   const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
+   const domain=document.querySelector("#import-domain")?.value||"work";
+   const parser=window.CommandImportParser;
+   const extract=result=>{
+    const text=result?.data?.text||"";
+    return [...parser.parseText(text,domain,yr,mo),
+      ...parser.parseTsv(result?.data?.tsv||"",text,domain,yr,mo)];
+   };
+   const reconcile=rows=>parser.reconcileRows(rows,domain,usualWorkdays());
    for(let i=0;i<files.length;i++){
     status.textContent="Reading screenshot "+(i+1)+" of "+files.length+"…";
-    const result=await worker.recognize(files[i],{}, {text:true,tsv:true});
-     const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
-     const activeDomain=document.querySelector("#import-domain")?.value||"work";
-     const spatial=window.CommandImportParser.parseTsv(result.data?.tsv||"",result.data?.text||"",activeDomain,yr,mo);
-     const plain=parseImportedText(result.data?.text||"",activeDomain,yr,mo);
-     detected.push(...spatial,...plain);
-    texts.push(result.data?.text||"");
-    if(activeDomain==="work"&&i===0&&detected.length>=2&&detected.length<=5){
-      status.textContent="Checking the top of the screenshot for a missing shift…";
-      const top=await inspectTopOfScreenshot(files[i],worker);
-      if(top){
-        const topText=top.data?.text||"";
-        const fromCrop=window.CommandImportParser.parseTsv(top.data?.tsv||"",topText,activeDomain,yr,mo);
-        const fromCropText=parseImportedText(topText,activeDomain,yr,mo);
-        detected.push(...fromCrop,...fromCropText);
-        texts.push(topText);
+    const primary=await worker.recognize(files[i],{}, {text:true,tsv:true});
+    const original=primary.data?.text||"";
+    texts.push(original);
+    const visibleTimes=parser.timeOnlyRows(original,domain);
+    const readings=extract(primary);
+    let dated=reconcile(readings);
+    if(dated.length<visibleTimes.length||dated.length<2){
+      status.textContent="Rechecking unclear rows on screenshot "+(i+1)+"…";
+      const enhanced=await enhancedScreenshot(files[i],worker);
+      if(enhanced){
+       readings.push(...extract(enhanced));
+       texts.push(enhanced.data?.text||"");
+       dated=reconcile(readings);
+      }
+      if(i===0&&dated.length<visibleTimes.length){
+       const top=await inspectTopOfScreenshot(files[i],worker);
+       if(top){readings.push(...extract(top));texts.push(top.data?.text||"");dated=reconcile(readings);}
       }
     }
+    detected.push(...dated);
+    // Retain every extra time that couldn't be attached to an observed date.
+    // Count repeated identical hours independently: they can be real shifts.
+    const counts=new Map();
+    for(const row of dated){
+      const key=row.startTime+"|"+row.endTime;
+      counts.set(key,(counts.get(key)||0)+1);
+    }
+    for(const candidate of visibleTimes){
+      const key=candidate.startTime+"|"+candidate.endTime,n=counts.get(key)||0;
+      if(n>0){counts.set(key,n-1);continue;}
+      undated.push(candidate); // no date, unchecked by default
+    }
    }
-   raw.value=texts.map(t=>t.trim()).filter(Boolean).join("\n");
-   const recognized=new Map(detected.map(e=>[[e.domain,e.date,e.startTime,e.endTime].join("|"),e]));
-   if(ui.workingImport)ui.workingImport.ocrRows=[...recognized.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.startTime.localeCompare(b.startTime));
-   status.textContent="Screenshot read. Preparing your schedule…";
    const draft=ui.workingImport;
-   if(draft){
-    draft.domain=document.querySelector("#import-domain")?.value||draft.domain;
-    draft.raw=raw.value;
-    const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
-    const plain=parseImportedText(draft.raw,draft.domain,yr,mo);
-    draft.rows=window.CommandImportParser.proposeClippedPrevious(draft.raw,
-      window.CommandImportParser.reconcileRows([...plain,...draft.ocrRows],draft.domain,usualWorkdays()),draft.domain);
-    draft.openReviewId=undefined;
-    sortedDraft(draft.rows);
-    importPreview();
-    const openIndex=draft.rows.findIndex(e=>e.id===draft.openReviewId);
-    if(openIndex>=0)document.querySelector("#schedule-review-"+openIndex)?.scrollIntoView({block:"nearest",behavior:"instant"});
-    status.textContent=draft.rows.length+" dated shift"+(draft.rows.length===1?"":"s")+" found. Unlabeled times are not imported.";
-   }
-  }catch(err){status.textContent=err.message||"Could not read the image. Try Live Text in Photos.";}
-  finally{if(worker)try{await worker.terminate();}catch(e){} if(button)button.disabled=false;}
+   if(!draft)return;
+   draft.domain=domain;
+   draft.raw=texts.filter(Boolean).join("\n");
+   raw.value=draft.raw;
+   draft.ocrRows=reconcile(detected);
+   draft.rows=[...draft.ocrRows,...undated];
+   draft.openReviewId=undefined;
+   sortedDraft(draft.rows);importPreview();
+   status.textContent=draft.ocrRows.length+" dated shift"+(draft.ocrRows.length===1?"":"s")+" found"+
+    (undated.length?"; "+undated.length+" time"+(undated.length===1?"":"s")+" need dates.":".")+
+    " Compare against your source before saving.";
+  }catch(error){status.textContent=error.message||"Could not read the screenshot. Try Live Text from Photos.";}
+  finally{if(worker)try{await worker.terminate();}catch(e){}if(button)button.disabled=false;}
  }
  function handleAction(b){
   const action=b.dataset.action;
