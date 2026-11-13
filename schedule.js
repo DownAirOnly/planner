@@ -329,7 +329,7 @@ function eventForm(item={}){
  function workweekForm(){
   const selected=usualWorkdays();
   showSheet('<div class="sheet-head"><h2 class="sheet-title">Usual workdays</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+ic("x")+'</button></div>'+
-    '<p class="schedule-hint">These days help Command interpret unclear screenshot dates. Actual shifts still come from your schedule.</p>'+
+    '<p class="schedule-hint">These days are preferences only. Screenshot imports require a visible day and shift time.</p>'+
     '<form id="schedule-workweek-form"><div class="schedule-weekday-prefs">'+workWeekOrder.map(d=>'<label class="schedule-workday-option"><input type="checkbox" name="usualDay" value="'+d+'" '+(selected.includes(d)?"checked":"")+'><span>'+["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][d]+'</span></label>').join("")+'</div>'+
     '<div class="sheet-actions"><button type="button" class="button secondary" data-action="close-modal">Cancel</button><button class="button" type="submit">'+ic("check")+' Save days</button></div></form>');
  }
@@ -339,7 +339,7 @@ function eventForm(item={}){
   showSheet('<div class="sheet-head"><h2 class="sheet-title">Import schedule</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+ic("x")+'</button></div>'+
     '<div class="field"><label for="import-domain">Calendar</label><select id="import-domain">'+Object.keys(DOMAINS).map(d=>'<option value="'+d+'" '+(domain===d?"selected":"")+'>'+DOMAINS[d].label+'</option>').join("")+'</select></div>'+
     '<div class="field"><label for="schedule-image-input">Schedule screenshot</label><input type="file" id="schedule-image-input" accept="image/*" multiple></div>'+
-    (domain==="work"?'<div class="schedule-workweek-import"><span>Usual workdays: '+esc(workweekText())+'</span></div>':"")+
+    (domain==="work"?'<div class="schedule-workweek-import"><span>Screenshot imports only use dates and times visible in the image.</span></div>':"")+
     '<p id="schedule-ocr-status" class="schedule-hint" role="status">Choose a screenshot. Command will propose shifts for you to review.</p>'+
     '<div id="schedule-import-results" class="schedule-import-results"></div>'+
     '<details class="schedule-import-advanced"><summary>Other import options</summary><div class="schedule-import-advanced-content">'+
@@ -368,7 +368,7 @@ function eventForm(item={}){
       const confText=row.reviewed?"Reviewed":(level==="high"?"High confidence":level==="medium"?"Medium confidence":"Low confidence");
       const needsEdit=!row.startTime||!row.endTime;
       const opened=row.id===draft.openReviewId;
-      const detail=row.confidenceReason||(!row.startTime||!row.endTime?"Times could not be read":"Date and time inferred");
+      const detail=row.confidenceReason||(!row.startTime||!row.endTime?"Times could not be read":"Date and times found");
       const status=(!row.startTime||!row.endTime)?"Times need review":fmtTime(row);
       const totals=timekeeping.shiftTotals(row);
       const hours=totals.scheduled!=null?timekeeping.minutesLabel(totals.scheduled)+" scheduled · "+totals.breaks+"m break · "+timekeeping.minutesLabel(totals.adjusted)+" adjusted":"Hours need review";
@@ -522,7 +522,7 @@ function eventForm(item={}){
     importPreview();
     const openIndex=draft.rows.findIndex(e=>e.id===draft.openReviewId);
     if(openIndex>=0)document.querySelector("#schedule-review-"+openIndex)?.scrollIntoView({block:"nearest",behavior:"instant"});
-    status.textContent=draft.rows.length+" proposed shift"+(draft.rows.length===1?"":"s")+" ready to review.";
+    status.textContent=draft.rows.length+" dated shift"+(draft.rows.length===1?"":"s")+" found. Unlabeled times are not imported.";
    }
   }catch(err){status.textContent=err.message||"Could not read the image. Try Live Text in Photos.";}
   finally{if(worker)try{await worker.terminate();}catch(e){} if(button)button.disabled=false;}
