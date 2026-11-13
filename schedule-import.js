@@ -250,5 +250,102 @@ function reconcileRows(rows,domain,usualWorkdays=[5,6,0,1,2]){
  return fillSharedWorkLocation(merged,domain);
 }
 
-window.CommandImportParser={parseText,parseTsv,countRanges,context,timeRange,proposeClippedPrevious,reconcileRows};
+
+// v38: Source-app calendar sections, not sequential dates.
+const isCalendarHeading=line=>/^(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+20\d\d$/i.test(clean(line))||
+  /\b(?:[1-9]|[12]\d|3[01])\s*-\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?(?:[1-9]|[12]\d|3[01])\b/i.test(clean(line));
+function parseTextV38(raw,domain,year,month){
+ const lines=String(raw||"").split(/\r?\n/).map(clean).filter(Boolean).slice(0,600);
+ const ctx=context(raw,year,month),results=[];
+ let current="",confidence="medium",weekdayLabel="";
+ for(let i=0;i<lines.length;i++){
+  const line=lines[i],time=timeRange(line);
+  if(!time&&isCalendarHeading(line)){current="";weekdayLabel="";continue;}
+  if(!time){
+   const weekday=weekdayOnly(line);
+   if(weekday){weekdayLabel=weekday;current="";continue;}
+   const direct=dayFromPrefix(line);
+   const explicit=explicitDate(line,ctx);
+   let date=direct?labeledDay(line,ctx):(!isCalendarHeading(line)&&line.length<43?explicit:"");
+   if(date&&weekdayMatches(weekdayLabel,date)){
+    current=date;confidence=ctx.fromHeader||!!explicit?"high":"medium";weekdayLabel="";
+   }else if(date){current="";weekdayLabel="";}
+   continue;
+  }
+  const prefix=line.slice(0,time.index).trim();
+  const direct=rowEvidence(prefix,lines,i,ctx);
+  const date=direct?.date||current;
+  if(!date)continue;
+  let description=line;
+  for(let j=i+1;j<Math.min(i+12,lines.length);j++){
+   if(timeRange(lines[j])||dayFromPrefix(lines[j])||weekdayOnly(lines[j])||isCalendarHeading(lines[j]))break;
+   description+=" "+lines[j];
+  }
+  const level=direct?.confidence||confidence;
+  results.push(makeEvent(date,time,domain,description,level,
+    level==="high"?"Calendar day and shift time visible":"Calendar day visible; verify schedule month"));
+  current="";weekdayLabel="";
+ }
+ return unique(fillSharedWorkLocation(results,domain)).slice(0,100);
+}
+function parseTsvV38(tsv,raw,domain,year,month){
+ const words=wordsFromTsv(tsv);if(words.length<5)return[];
+ const ctx=context(raw,year,month);
+ const maxX=Math.max(...words.map(w=>w.right)),maxY=Math.max(...words.map(w=>w.top+w.height));
+ const heights=words.map(w=>w.height).filter(Boolean).sort((a,b)=>a-b),median=heights[Math.floor(heights.length/2)]||16;
+ const tolerance=Math.max(10,Math.min(27,median*.8)),lines=[];
+ for(const word of [...words].sort((a,b)=>a.center-b.center||a.left-b.left)){
+  let line=lines.find(l=>Math.abs(l.center-word.center)<=tolerance);
+  if(!line){line={center:word.center,words:[]};lines.push(line);}
+  line.words.push(word);line.center=(line.center*(line.words.length-1)+word.center)/line.words.length;
+ }
+ const timed=lines.map(l=>({...l,text:[...l.words].sort((a,b)=>a.left-b.left).map(w=>w.text).join(" ")}))
+  .map(l=>({...l,time:timeRange(l.text)})).filter(l=>l.time);
+ const numerals=words.filter(w=>w.left<maxX*.27&&/^([1-9]|[12]\d|3[01])[,.]?$/.test(w.text))
+  .map(w=>({word:w,date:dateIso(ctx.year,ctx.month,parseInt(w.text,10))})).filter(v=>v.date);
+ const result=[],used=new Set(),maxRange=Math.max(60,Math.min(115,median*5.5));
+ for(const line of timed){
+  const timeLeft=Math.min(...line.words.filter(w=>/\d|(?:AM|PM)/i.test(w.text)).map(w=>w.left));
+  const candidates=numerals.map(entry=>{
+   const offset=line.center-entry.word.center;
+   if(offset< -Math.max(25,median*1.5)||offset>maxRange||entry.word.left>=timeLeft-10)return null;
+   const nearby=words.filter(w=>w.left<maxX*.27&&weekdayOnly(w.text)&&
+     w.center<=entry.word.center+30&&entry.word.center-w.center<Math.max(120,median*8));
+   const matching=nearby.find(w=>weekdayMatches(weekdayOnly(w.text),entry.date));
+   if(nearby.length&&!matching)return null;
+   if(words.some(w=>w!==entry.word&&Math.abs(w.center-entry.word.center)<median*1.5&&
+      w.left>entry.word.left&&w.left<entry.word.right+135&&/^[-–—]$/.test(w.text)))return null;
+   return {entry,high:!!matching,score:Math.abs(offset)+(matching?-20:12)};
+  }).filter(Boolean).sort((a,b)=>a.score-b.score);
+  if(!candidates.length)continue;
+  const chosen=candidates[0],date=chosen.entry.date,key=date+"|"+line.time.startTime+"|"+line.time.endTime;
+  if(used.has(key))continue;used.add(key);
+  const nextY=Math.min(maxY+1,...timed.filter(x=>x.center>line.center+18).map(x=>x.center));
+  const description=words.filter(w=>w.left>maxX*.20&&w.center>=line.center-20&&
+    w.center<Math.min(nextY-12,line.center+Math.max(175,median*10)))
+    .sort((a,b)=>a.center-b.center||a.left-b.left).map(w=>w.text).join(" ");
+  const row=makeEvent(date,line.time,domain,description,chosen.high?"high":"medium",
+    chosen.high?"Date and time visible in screenshot":"Date number aligned with shift; review date");
+  if(!chosen.high)row._include=false;
+  result.push(row);
+ }
+ return unique(fillSharedWorkLocation(result,domain)).slice(0,100);
+}
+function timeOnlyRows(raw,domain){
+ const lines=String(raw||"").split(/\r?\n/).map(clean).filter(Boolean),out=[];
+ for(let i=0;i<lines.length;i++){
+  const time=timeRange(lines[i]);if(!time)continue;
+  let description=lines[i];
+  for(let j=i+1;j<Math.min(i+9,lines.length);j++){
+   if(timeRange(lines[j])||dayFromPrefix(lines[j])||weekdayOnly(lines[j]))break;
+   description+=" "+lines[j];
+  }
+  const row=makeEvent("",time,domain,description,"low","Date not read — enter it before saving");
+  row.date="";row.estimatedDate=true;row._include=false;
+  out.push(row);
+ }
+ return out;
+}
+
+window.CommandImportParser={parseText:parseTextV38,parseTsv:parseTsvV38,timeOnlyRows,countRanges,context,timeRange,proposeClippedPrevious,reconcileRows};
 })();
