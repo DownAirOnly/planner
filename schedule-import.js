@@ -112,7 +112,8 @@ function locationFrom(text,domain){
  function activityFrom(text){
  const s=clean(text),match=s.match(/\b(Red|Orange|Yellow|Green|Blue|Purple)\s*Zone\b/i);
  if(match)return {assignment:"zones",zoneColor:match[1].toLowerCase(),assignmentEstimated:false};
- if(/\bArea[\s/-]*Support\b/i.test(s))return {assignment:"support",zoneColor:"",assignmentEstimated:false};
+ // Cropped shift-card OCR sometimes drops the final 'a' in Area.
+ if(/\b(?:Area|Are)[\s/-]*Support\b/i.test(s))return {assignment:"support",zoneColor:"",assignmentEstimated:false};
   if(/\bRTC\b/i.test(s))return {assignment:"rtc",zoneColor:"",assignmentEstimated:false};
  if(/\bDetail\b/i.test(s))return {assignment:"detail",zoneColor:"",assignmentEstimated:false};
  if(/\bZones?\b/i.test(s))return {assignment:"zones",zoneColor:"",assignmentEstimated:false};
