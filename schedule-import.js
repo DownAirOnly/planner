@@ -227,7 +227,8 @@ function proposeClippedPrevious(raw,rows,domain){return rows;}
 function reconcileRows(rows,domain,usualWorkdays=[5,6,0,1,2]){
  // Usual workdays are preferences, not evidence of a scheduled shift.
  const confidenceScore={high:300,medium:200,low:100};
- const validDate=value=>/^\d{4}-\d\d-\d\d$/.test(value||"")&&!Number.isNaN(new Date(value+"T12:00:00").getTime());
+ const validDate=value=>/^\d{4}-\d\d-\d\d$/.test(value||"")&&
+    dateIso(+value.slice(0,4),+value.slice(5,7),+value.slice(8,10))===value;
  const strength=e=>(confidenceScore[e.dateConfidence]||100)+(e.startTime&&e.endTime?15:0)+(e.location?4:0)+(e.assignment?2:0)+(e.estimatedDate?-3:0);
  const map=new Map();
  for(const e of rows||[]){
@@ -243,10 +244,18 @@ function reconcileRows(rows,domain,usualWorkdays=[5,6,0,1,2]){
      assignment:e.assignment||old.assignment||"",
      zoneColor:e.zoneColor||old.zoneColor||"",
      park:e.park||old.park||"IOA"
-    }:e);
+    }:{...e});
   }
  }
  const merged=[...map.values()].sort((a,b)=>a.date.localeCompare(b.date)||String(a.startTime||"").localeCompare(String(b.startTime||"")));
+ // Multiple time ranges for one date can be real split shifts or conflicting
+ // OCR. Keep both visible but require explicit selection.
+ const byDate=new Map();
+ for(const row of merged)if(row.domain==="work")byDate.set(row.date,(byDate.get(row.date)||0)+1);
+ for(const row of merged)if(row.domain==="work"&&(byDate.get(row.date)||0)>1){
+   row._include=false;row.dateConfidence="medium";
+   row.confidenceReason="Multiple shift times on this date — review against screenshot";
+ }
  return fillSharedWorkLocation(merged,domain);
 }
 
@@ -268,7 +277,8 @@ function parseTextV38(raw,domain,year,month){
    const explicit=explicitDate(line,ctx);
    let date=direct?labeledDay(line,ctx):(!isCalendarHeading(line)&&line.length<43?explicit:"");
    if(date&&weekdayMatches(weekdayLabel,date)){
-    current=date;confidence=ctx.fromHeader||!!explicit?"high":"medium";weekdayLabel="";
+    const observedWeekday=!!weekdayLabel||!!direct?.weekday;
+    current=date;confidence=!!explicit||(observedWeekday&&ctx.fromHeader)?"high":"medium";weekdayLabel="";
    }else if(date){current="";weekdayLabel="";}
    continue;
   }
@@ -281,9 +291,14 @@ function parseTextV38(raw,domain,year,month){
    if(timeRange(lines[j])||dayFromPrefix(lines[j])||weekdayOnly(lines[j])||isCalendarHeading(lines[j]))break;
    description+=" "+lines[j];
   }
-  const level=direct?.confidence||confidence;
-  results.push(makeEvent(date,time,domain,description,level,
-    level==="high"?"Calendar day and shift time visible":"Calendar day visible; verify schedule month"));
+  let level=direct?.confidence||confidence;
+  const observedWeekday=lines.slice(Math.max(0,i-8),i).some(x=>weekdayOnly(x));
+  const prefixLabel=dayFromPrefix(prefix);
+  if(level==="high"&&!explicitDate(prefix,ctx)&&!observedWeekday&&!prefixLabel?.weekday&&!(date===current&&confidence==="high"))level="medium";
+  const event=makeEvent(date,time,domain,description,level,
+    level==="high"?"Observed weekday, day and shift times":"Date needs confirmation");
+  if(level!=="high")event._include=false;
+  results.push(event);
   current="";weekdayLabel="";
  }
  return unique(fillSharedWorkLocation(results,domain)).slice(0,100);
@@ -305,7 +320,8 @@ function parseTsvV38(tsv,raw,domain,year,month){
   .map(w=>({word:w,date:dateIso(ctx.year,ctx.month,parseInt(w.text,10))})).filter(v=>v.date);
  const result=[],used=new Set(),maxRange=Math.max(60,Math.min(115,median*5.5));
  for(const line of timed){
-  const timeLeft=Math.min(...line.words.filter(w=>/\d|(?:AM|PM)/i.test(w.text)).map(w=>w.left));
+  const cardTokens=line.words.filter(w=>w.left>maxX*.17&&/\d|(?:AM|PM)/i.test(w.text));
+  const timeLeft=cardTokens.length?Math.min(...cardTokens.map(w=>w.left)):maxX;
   const candidates=numerals.map(entry=>{
    const offset=line.center-entry.word.center;
    if(offset< -Math.max(25,median*1.5)||offset>maxRange||entry.word.left>=timeLeft-10)return null;
