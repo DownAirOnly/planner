@@ -163,7 +163,7 @@
     return '<div class="page-heading page-heading-actions-only"><button class="button" data-action="quick-add">'+icon('plus')+' Capture</button></div><section class="section">'+(loose.length?loose.map(taskRow).join(''):empty('Nothing to organize','New captures appear here.'))+'</section>'+
     ((review.length||ps.length)?'<section class="section"><h2>Review existing entries</h2><p class="page-description">Older entries are preserved. Open each one and confirm its status before it becomes a suggestion.</p><div class="project-grid">'+ps.map(projectCard).join('')+'</div>'+review.map(taskRow).join('')+'</section>':'')+
     '<section class="section"><div class="section-head"><h2>Ideas</h2><button class="subtle-link" data-action="open-ideas">All ideas</button></div>'+data.ideas.filter(i=>!i.areaId).map(i=>'<button class="project-summary-row" data-action="edit" data-kind="idea" data-id="'+escapeHtml(i.id)+'">'+escapeHtml(i.title)+'</button>').join('')+'</section>'+
-    '<button class="button quiet" data-action="restore-suggestions">Restore dismissed suggestions</button>';
+    (data.dismissed.length?'<button class="button quiet" data-action="restore-suggestions">Restore dismissed suggestions ('+data.dismissed.length+')</button>':"");
   }
   function quickAdd(){showSheet('<div class="sheet-head"><h2 class="sheet-title">Capture</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+icon('x')+'</button></div><form id="capture-form">'+textField('What’s on your mind?','title','',true)+'<button class="button" type="submit">Add to Inbox</button></form>');$('#field-title')?.focus();}
   function empty(title,detail){return '<div class="empty"><strong>'+escapeHtml(title)+'</strong><p>'+escapeHtml(detail)+'</p></div>';}
@@ -184,20 +184,27 @@
       (tasks.length?'<div class="task-list">'+tasks.map(taskRow).join("")+'</div>':empty("No tasks yet","Add concrete actions to move this project forward."))+'</section>';
   }
   function filteredTasks(){
-    return data.tasks.filter((t)=>{
+    return data.tasks.filter(t=>{
       if(state.taskFilter==="open"&&t.status==="done")return false;
+      if(state.taskFilter==="ready"&&!actionableTask(t))return false;
+      if(state.taskFilter==="waiting"&&!["waiting","blocked"].includes(t.status))return false;
       if(state.taskFilter==="done"&&t.status!=="done")return false;
       const q=state.query.trim().toLowerCase();
-      return !q || (t.title+" "+t.notes+" "+projectName(t.projectId)).toLowerCase().includes(q);
+      return !q||(t.title+" "+t.notes+" "+projectName(t.projectId)+" "+areaName(itemArea(t))).toLowerCase().includes(q);
     }).sort(taskSort);
   }
   function tasks(){
-    return '<div class="page-heading"><div><p class="eyebrow">Things to finish</p><h1 class="page-title">Tasks</h1><p class="description">Small steps across every project.</p></div><button class="button" data-action="edit" data-kind="task">'+icon("plus")+' Add</button></div>'+
+    const filters=[["open","Open"],["ready","Ready"],["waiting","Waiting"],["done","Done"],["all","All"]];
+    return '<div class="page-heading"><div><h1 class="page-title">Tasks</h1><p class="description">Your tasks, organized by status.</p></div><button class="button" data-action="edit" data-kind="task">'+icon("plus")+' Add</button></div>'+
       '<input class="search" id="task-search" type="search" placeholder="Search tasks" value="'+escapeHtml(state.query)+'" aria-label="Search tasks">'+
-      '<div class="filter-bar">'+["open","all","done"].map(f=>'<button class="filter '+(state.taskFilter===f?"selected":"")+'" data-action="task-filter" data-filter="'+f+'">'+({open:"Open",all:"All",done:"Done"}[f])+'</button>').join("")+'</div>'+
+      '<div class="filter-bar task-filter-bar" role="group" aria-label="Task status">'+filters.map(([key,label])=>'<button class="filter '+(state.taskFilter===key?"selected":"")+'" data-action="task-filter" data-filter="'+key+'" aria-pressed="'+(state.taskFilter===key)+'">'+label+'</button>').join("")+'</div>'+
       '<div id="task-results">'+taskResults()+'</div>';
   }
-  function taskResults(){const all=filteredTasks();return all.length?'<div class="task-list">'+all.map(taskRow).join("")+'</div>':empty("No matching tasks","Try a different filter or add something new.");}
+  function taskResults(){
+    const all=filteredTasks();
+    return all.length?'<div class="task-results-count">'+all.length+' item'+(all.length===1?"":"s")+'</div><div class="task-list">'+all.map(t=>taskRow(t,true)).join("")+'</div>':
+      empty("No matching tasks",state.taskFilter==="ready"?"Ready requires an organized, confirmed task outside a blocked project.":"Try a different filter or add something new.");
+  }
   function ideas(){
     return '<button class="back" data-action="tab" data-view="areas">'+icon("chevron-left","tiny")+' Projects</button><div class="page-heading"><div><h1 class="page-title">Ideas</h1></div><button class="button" data-action="edit" data-kind="idea">'+icon("plus")+' Add</button></div>'+
       (data.ideas.length?data.ideas.map(i=>'<div class="card"><div class="idea-card"><div class="idea-symbol">'+icon("bulb")+'</div><div style="flex:1;min-width:0"><div class="card-row"><h2 class="card-title">'+escapeHtml(i.title)+'</h2><button class="task-edit" data-action="edit" data-kind="idea" data-id="'+escapeHtml(i.id)+'" aria-label="Edit idea">'+icon("more")+'</button></div><p class="card-desc">'+escapeHtml(i.description||"No details yet.")+'</p><button class="subtle-link" style="margin-top:10px" data-action="promote-idea" data-id="'+escapeHtml(i.id)+'">Turn into project '+icon("arrow","tiny")+'</button></div></div></div>').join(""):empty("No saved ideas","Save an idea here when it's not a priority yet."));
@@ -396,6 +403,7 @@
     }
     if(action==='notifications'){notifications();return;}
     if(action==='quick-add'){quickAdd();return;}
+    if(action==='tasks-ready'){state.taskFilter="ready";switchTab("tasks");return;}
     if(action==='home-add-plan'){
       schedule.setDomain("personal");
       state.view="schedule";state.projectId=null;state.areaId=null;render();resetPageScroll();
@@ -420,7 +428,7 @@
     if(action==="edit"){openEditor(kind,id,button.dataset.project||"");return;}
     if(action==="project-detail"){state.projectId=id;state.view="areas";render();resetPageScroll();return;}
     if(action==="close-project"){state.projectId=null;state.view="areas";render();return;}
-    if(action==="task-filter"){state.taskFilter=button.dataset.filter;render();return;}
+    if(action==="task-filter"){state.taskFilter=["open","ready","waiting","done","all"].includes(button.dataset.filter)?button.dataset.filter:"open";render();return;}
     if(action==="toggle-task"){const task=data.tasks.find(t=>t.id===id);if(task){task.status=task.status==="done"?"open":"done";save();render();toast(task.status==="done"?"Task completed":"Task reopened");}return;}
     if(action==="promote-idea"){
       const idea=data.ideas.find(i=>i.id===id);if(!idea)return;
@@ -432,6 +440,7 @@
       const collection={task:"tasks",project:"projects",idea:"ideas"}[kind];
       if(kind==="project"){data.tasks=data.tasks.map(t=>t.projectId===id?{...t,projectId:""}:t);state.projectId=null;}
       data[collection]=data[collection].filter(x=>x.id!==id);
+      if(kind==="task"){data.focus=data.focus.filter(x=>x!==id);data.dismissed=data.dismissed.filter(x=>x!==id);}
       save();closeSheet();render();toast("Deleted");return;
     }
     if(action==="export"){exportData();return;}
@@ -486,7 +495,7 @@
     if(kind==="idea")item={...previous,id:id||uid(),title,areaId:validArea(values.areaId),description:(values.description||"").trim(),createdAt:previous?.createdAt||today()};
     if(previous)data[collection]=data[collection].map(v=>v.id===id?item:v);
     else data[collection].unshift(item);
-    if(kind==='task'){if(values.pinned==='yes'){if(!data.focus.includes(item.id))data.focus.push(item.id);}else data.focus=data.focus.filter(x=>x!==item.id);}
+    if(kind==='task'){if(values.pinned==='yes'){if(!data.focus.includes(item.id))data.focus.push(item.id);data.dismissed=data.dismissed.filter(x=>x!==item.id);}else data.focus=data.focus.filter(x=>x!==item.id);}
     if(save()){closeSheet();render();toast(previous?"Changes saved":"Added successfully");}
   });
   importInput.addEventListener("change",async(event)=>{
