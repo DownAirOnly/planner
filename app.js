@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 38;
+  const APP_VERSION = 39;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -255,7 +255,16 @@
     setTimeout(()=>{$("#field-title")?.focus();},30);
   }
   function showSheet(content){overlay.innerHTML='<div class="overlay" data-action="backdrop"><div class="sheet" role="dialog" aria-modal="true" aria-label="Command editor">'+content+'</div></div>';document.body.style.overflow="hidden";}
-  function closeSheet(){overlay.innerHTML="";document.body.style.overflow="";if(window.__commandUpdatePending){window.__commandUpdatePending=false;window.location.reload();}}
+  function hasUnsavedEditor(){
+    return !!overlay.firstElementChild||
+      !!window.CommandMoney?.isSyncEditing?.()||
+      !!document.querySelector("#screen form:focus-within");
+  }
+  function reloadAfterEdit(){
+    if(!window.__commandUpdatePending||hasUnsavedEditor())return;
+    window.__commandUpdatePending=false;window.location.reload();
+  }
+  function closeSheet(){overlay.innerHTML="";document.body.style.overflow="";reloadAfterEdit();}
 
   function accountContent(){
     const c=window.CommandCloud;
@@ -317,6 +326,8 @@
       '<div class="settings-group"><h3>Back up your data</h3><p>This export includes tasks, projects and schedules. To back up finances, use Money → Export Money JSON. Keep both files until the finance cloud backup has been verified.</p><button class="button" data-action="export">'+icon("download")+' Export backup</button><button class="button secondary" data-action="import">'+icon("upload")+' Import backup</button></div>'+
       '<div class="settings-group"><h3>Clear local data</h3><p>Clears local projects, tasks, ideas, and shifts only. The separate Money ledger is never cleared by this action. No starter content is restored, and any cloud data is untouched.</p><button class="button danger" data-action="reset">'+icon("trash")+' Clear all local data</button></div>'+
       (localStorage.getItem(RECOVERY_KEY)?'<div class="settings-group"><h3>Recovery</h3><p>Restore the saved copy from before a previous clear. This replaces the current data on this device.</p><button class="button secondary" data-action="restore-local-recovery">Restore last cleared data</button></div>':'')+
+      '<div class="settings-group"><h3>App updates</h3><p>Command v'+APP_VERSION+'. Updates are checked when the app opens, returns online, or becomes active. An open editor will not be interrupted.</p>'+
+      '<button class="button secondary" data-action="check-app-updates">Check for updates</button></div>'+
       '<details class="settings-group"><summary>Display diagnostics</summary><p>For troubleshooting the iPhone Home Screen layout.</p><button class="button secondary" data-action="display-diagnostics">Copy display details</button></details>'+ 
       '<div class="settings-group"><h3>About</h3><p>Command v'+APP_VERSION+' · Local storage, Google sign-in and manual backup when connected.</p></div>');
   }
@@ -336,6 +347,14 @@
     const button=event.target.closest("[data-action]");if(!button)return;
     const action=button.dataset.action,id=button.dataset.id,kind=button.dataset.kind;
     if(schedule.handleAction(button))return;
+    if(action==="check-app-updates"){
+      if(!("serviceWorker" in navigator)){toast("Offline updates are unsupported here");return;}
+      navigator.serviceWorker.getRegistration().then(async registration=>{
+        if(!registration)registration=await navigator.serviceWorker.register("./sw.js",{updateViaCache:"none"});
+        await registration.update();toast("Checked for updates — running v"+APP_VERSION);
+      }).catch(error=>toast("Update check failed: "+error.message));
+      return;
+    }
     if(["cloud-signin","cloud-signout","cloud-save","cloud-restore"].includes(action)){void handleCloudAction(action);return;}
     if(action==='display-diagnostics'){
       const bar=document.querySelector(".tabbar"),shell=document.querySelector(".app-shell");
@@ -472,16 +491,37 @@
   document.addEventListener("keydown",(event)=>{if(event.key==="Escape"&&overlay.firstChild)closeSheet();});
   render();
   if("serviceWorker" in navigator){
+    let lastUpdateCheck=0;
+    const requestUpdate=()=>{
+      if(!navigator.onLine)return;
+      const now=Date.now();
+      if(now-lastUpdateCheck<60000)return;
+      lastUpdateCheck=now;
+      navigator.serviceWorker.getRegistration().then(registration=>registration?.update())
+        .catch(error=>console.warn("Update check unavailable",error));
+    };
     navigator.serviceWorker.addEventListener("controllerchange",()=>{
-      if(overlay.firstElementChild){window.__commandUpdatePending=true;toast("App update ready — finish editing to reload");}
-      else window.location.reload();
+      if(hasUnsavedEditor()){
+        window.__commandUpdatePending=true;
+        toast("Update ready — finish editing before reloading");
+      }else window.location.reload();
     });
     window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js",{updateViaCache:"none"})
-      .then(registration=>registration.update().catch(()=>{}))
-      .catch(err=>console.warn("Offline cache unavailable",err)));
+      .then(registration=>{
+        lastUpdateCheck=Date.now();
+        return registration.update();
+      }).catch(error=>console.warn("Offline cache unavailable",error)));
+    window.addEventListener("pageshow",requestUpdate);
+    window.addEventListener("online",requestUpdate);
     document.addEventListener("visibilitychange",()=>{
-      if(document.visibilityState==="visible")navigator.serviceWorker.getRegistration()
-        .then(registration=>registration?.update()).catch(()=>{});
+      if(document.visibilityState==="visible"){
+        reloadAfterEdit();
+        requestUpdate();
+      }
     });
+    // An inline Money editor can close without closing the global overlay.
+    // Wait for its save action to settle before applying a pending update.
+    window.addEventListener("command-money-updated",()=>setTimeout(reloadAfterEdit,350));
+    document.addEventListener("click",()=>{if(window.__commandUpdatePending)setTimeout(reloadAfterEdit,500);},true);
   }
 })();
