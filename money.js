@@ -81,7 +81,7 @@
        throw Error("Invalid bill occurrence status in "+s.id);
    }
    unique(schedules.map(x=>x.id),"schedule ID");
-   if(budgetPlan.balanceCents!=null&&!Number.isSafeInteger(budgetPlan.balanceCents))throw Error("Invalid cash balance.");
+   if(budgetPlan.balanceCents!=null&&(!Number.isSafeInteger(budgetPlan.balanceCents)||Math.abs(budgetPlan.balanceCents)>10000000000))throw Error("Invalid cash balance.");
    if(budgetPlan.balanceAsOf&&!iso(budgetPlan.balanceAsOf))throw Error("Invalid balance date.");
    if(Object.values(paycheckAmounts).some(n=>!Number.isSafeInteger(n)||n<=0))throw Error("Invalid paycheck override.");
    if(Object.values(billAssignments).some(n=>!iso(n)))throw Error("Invalid bill assignment date.");
@@ -135,7 +135,27 @@
    }catch(err){error="Finance could not be read. The original local data has not been replaced: "+err.message;record=null;}
  }
  const dispatch=()=>window.dispatchEvent(new CustomEvent("command-money-updated"));
- function savePending(){
+ async function startFresh(){
+   if(record||localStorage.getItem(KEY))throw Error("Money already has saved data. Your existing records were not changed.");
+   const finance={transactions:[],archivedTransactions:[],classificationRules:[],
+     budgetPlan:{balanceCents:null,balanceAsOf:"",categoryLimits:[],schedules:[],
+       paycheckAmounts:{},billAssignments:{},unresolvedBankRows:[]}};
+   const checked=validateFile({format:FORMAT,section:"finances",data:finance});
+   const hash=await sha(checked.finance);
+   // New ledger only: never overwrite an existing import, recovery snapshot or
+   // account-synced data. Existing import and sync safeguards remain unchanged.
+   if(localStorage.getItem(KEY))throw Error("Money appeared in storage while setting up. Nothing was overwritten.");
+   const saved={format:"command-finance-v1",sourceFormat:FORMAT,
+     importedAt:new Date().toISOString(),sourceFilename:"Started in Command",
+     sha256:hash,data:checked.finance};
+   const serialized=JSON.stringify(saved);
+   localStorage.setItem(KEY,serialized);
+   if(localStorage.getItem(KEY)!==serialized||await sha(JSON.parse(serialized).data)!==hash)
+     throw Error("The new Money record could not be verified. Do not proceed until storage is checked.");
+   record={...saved,report:checked.report};verified=true;error="";view="overview";
+   dispatch();
+ }
+  function savePending(){
    if(!pending)return;
    if(record?.report?.transactions>0&&pending.report.transactions===0)
      throw Error("Refusing to replace financial history with a settings-only file.");
@@ -803,10 +823,11 @@
      '<div id="money-sync-panel">'+syncControls+'</div>';
    if(!record)return ui.advancedHeader("Set up Money","Your history and financial records can be imported without adding sample data.")+
      '<div class="moneys-surface"><h2>No money records on this device</h2>'+
-     '<p>Import your existing Everyday Finances JSON or restore a verified Google Money backup.</p>'+
+     '<p>Import an existing finance file, restore a verified backup, or start a new ledger. No example transactions will be added.</p>'+
      importControl+
      '<div class="moneys-manage-actions"><button class="button" data-money-action="pick-file">Import finance JSON</button>'+
-     '<button class="button secondary" data-money-action="cloud-check">Check cloud backup</button></div>'+
+     '<button class="button secondary" data-money-action="cloud-check">Check cloud backup</button>'+
+      '<button class="button secondary" data-money-action="start-fresh">Start fresh</button></div>'+
      previewView()+'</div><div id="money-sync-panel">'+syncControls+'</div>';
    const f=record.data,r=record.report;
    const localEditing=planEditor?window.CommandMoneyBillsUI.editor(f,planEditor):"";
@@ -879,6 +900,17 @@
      if(action==="simple-balance"){
        planEditorStart("balance");return;
      }
+     if(action==="simple-bills"){
+       view="bills-detail";planEditor=null;
+       if(!record.data.budgetPlan.schedules.some(x=>x.kind==="expense"))planEditor={kind:"schedule",id:"",date:"",defaultKind:"expense"};
+       dispatch();return;
+     }
+     if(action==="simple-limits"){
+       view="budgets";planEditor=null;
+       if(!record.data.budgetPlan.categoryLimits.length)planEditor={kind:"limit",id:""};
+       dispatch();return;
+     }
+     if(action==="start-fresh"){await startFresh();return;}
      if(action==="simple-add"||action==="simple-transfer"){
        newKind=action==="simple-transfer"?"transfer":"expense";
        view="history";showArchived=false;reviewFilter="all";

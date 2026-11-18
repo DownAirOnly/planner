@@ -1,5 +1,16 @@
 # Command
 
+## v41 — Money essentials
+
+- **Available to spend** is shown only when the manually entered cash snapshot is dated today. Older snapshots show their original cash value with a prominent update prompt, not a misleading current spending figure.
+- Available-to-spend subtracts still-unpaid scheduled bills until the next scheduled payday, or across a clearly labeled 14-day window if no payday is scheduled. It is an estimate, not a bank balance. Recorded purchases do not automatically adjust manual cash.
+- Monthly category limits appear on the Money Overview with remaining/over-limit amounts and direct access to manage those caps. Existing receipt-item allocations and categories are reused without changing any transaction.
+- Unpaid bills and the next payday are surfaced alongside recent spending and category totals.
+- Bills display **planned remainder**, not a presumed spendable bank balance.
+- Devices without existing Money data can start a verified empty ledger. Starting fresh never overwrites an existing local ledger and never creates sample transactions.
+- Existing Everyday imports, bank reconciliation, recovery, and Google account syncing are retained. No finance schema migration or scheduled charge mutation.
+
+
 ## v40.1 — Schedule selection and editing reliability
 
 - The selected day is indicated in the existing Work Week shift list without rearranging the approved layout.

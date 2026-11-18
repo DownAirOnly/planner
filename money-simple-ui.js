@@ -16,14 +16,19 @@ const summaryCard=(label,number,description)=>'<div class="moneys-summary-card">
 const scheduleWindow=(f,today)=>{
  const planning=window.CommandMoneyPlanning;
  const horizon=planning.occurrences(f.budgetPlan,today,dateShift(today,60),f.transactions);
- const upcomingPay=horizon.filter(x=>x.kind==="income"&&x.date>today&&x.status!=="skipped")[0]||null;
+ const upcomingPay=horizon.find(x=>x.kind==="income"&&x.date>today&&x.status!=="skipped")||null;
+ // Without a scheduled payday, show exactly 14 days of bills rather than
+ // silently assuming a recurring income or implying this is a full budget.
  const stop=upcomingPay?.date||dateShift(today,14);
  const bills=horizon.filter(x=>x.kind==="expense"&&!x.settled&&x.date>=today&&x.date<stop);
  const reserved=bills.reduce((n,x)=>n+x.amountCents,0);
  const cash=f.budgetPlan.balanceCents,asOf=f.budgetPlan.balanceAsOf;
  const balanceKnown=Number.isSafeInteger(cash)&&typeof asOf==="string"&&asOf.length===10;
- return {nextPay:upcomingPay,bills,reserved,balanceKnown,cash,asOf,stale:balanceKnown&&asOf!==today,
-   available:balanceKnown?cash-reserved:null};
+ const stale=balanceKnown&&asOf!==today;
+ // Never label an old manual snapshot as current disposable cash. Transactions
+ // do not automatically update the manual balance, so old data is unsafe here.
+ return {nextPay:upcomingPay,bills,reserved,balanceKnown,cash,asOf,stale,stop,
+   available:balanceKnown&&!stale?cash-reserved:null};
 };
 const categorize=(transactions,start,end)=>{
  const groups=new Map();let total=0;
@@ -84,27 +89,51 @@ function overview(f,today){
  const w=scheduleWindow(f,today),month=today.slice(0,7);
  const endOfMonth=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).toISOString().slice(0,10);
  const spending=categorize(f.transactions,month+"-01",endOfMonth);
+ const limits=window.CommandMoneyPlanning.monthSpending(f.budgetPlan,f.transactions,month);
  const count=reviewCount(f.transactions);
+ const amount=w.balanceKnown?(w.stale?USD(w.cash):USD(w.available)):"Set your balance";
+ const heroLabel=!w.balanceKnown?"Available to spend":w.stale?"Last entered cash balance":"Available to spend";
+ const detail=!w.balanceKnown?
+   "Enter your current cash balance and scheduled bills to estimate spending headroom.":
+   w.stale?"As of "+DATE(w.asOf)+". Update your cash balance before using an available-to-spend estimate.":
+   "Current cash snapshot minus still-unpaid scheduled bills "+(w.nextPay?"before "+DATE(w.stop):"over the next 14 days")+
+   ". Recorded purchases do not automatically change your cash snapshot.";
  const hero='<section class="moneys-hero">'+
-   '<span>Available now'+(w.stale?'<em>Update needed</em>':'')+'</span>'+
-   '<strong>'+(w.balanceKnown?USD(w.available):'Set your balance')+'</strong>'+
-   '<p>'+(w.balanceKnown?
-     (w.stale?'Estimate from '+DATE(w.asOf)+'. Update cash for a reliable figure.':
-     'Cash on hand minus unpaid bills before the next paycheck.') :
-     'Enter your cash balance to estimate what is safe to spend after upcoming bills.')+'</p>'+
-   '<button data-money-action="simple-balance">'+(w.balanceKnown?'Update balance':'Set cash balance')+
+   '<span>'+heroLabel+(w.stale?'<em>Update needed</em>':"")+'</span>'+
+   '<strong>'+E(amount)+'</strong>'+
+   '<p>'+E(detail)+'</p>'+
+   '<button data-money-action="simple-balance">'+(w.balanceKnown?'Update cash balance':'Set cash balance')+
    ' <span class="moneys-chevron">›</span></button></section>';
- const pay=w.nextPay?USD(w.nextPay.amountCents):"Not set";
- const paySub=w.nextPay?DATE(w.nextPay.date):"Add a payday";
- const essentials='<div class="moneys-two">'+summaryCard("Bills before payday",USD(w.reserved),w.bills.length+" outstanding")+
+ const pay=w.nextPay?USD(w.nextPay.amountCents):"Not scheduled";
+ const paySub=w.nextPay?DATE(w.nextPay.date):"Set up a payday";
+ const billsCaption=w.nextPay?"Bills before payday":"Unpaid in next 14 days";
+ const essentials='<div class="moneys-two">'+summaryCard(billsCaption,USD(w.reserved),w.bills.length+" unpaid")+
    summaryCard("Next paycheck",pay,paySub)+'</div>';
+ const caps=limits.length?
+   '<div class="moneys-limits">'+limits.slice(0,4).map(x=>{
+     const over=x.remainingCents<0,percent=Math.max(0,x.percent);
+     return '<div class="moneys-limit-row"><div class="moneys-limit-top"><strong>'+E(x.category)+'</strong>'+
+       '<b class="'+(over?'is-over':'')+'">'+(over?USD(-x.remainingCents)+" over":USD(x.remainingCents)+" left")+'</b></div>'+
+       '<div class="moneys-meter'+(over?' is-over':'')+'"><i style="width:'+Math.min(100,percent).toFixed(1)+'%"></i></div>'+
+       '<small>'+USD(x.actualCents)+' of '+USD(x.limitCents)+' monthly limit</small></div>';
+   }).join("")+'</div>':
+   nothing("No monthly spending caps yet. Set caps for categories you want to keep within a hard budget.","simple-limits","Set monthly caps");
+ const billRows=w.bills.slice(0,3);
+ const upcoming='<section class="moneys-surface">'+cardTitle("Bills to cover","bills-detail","Manage bills")+
+   (billRows.length?'<div class="moneys-due">'+billRows.map(x=>'<button data-money-action="subview" data-subview="bills-detail">'+
+      '<span><strong>'+E(x.name)+'</strong><small>Due '+DATE(x.date)+'</small></span><b>−'+USD(x.amountCents)+'</b></button>').join("")+
+      (w.bills.length>3?'<p class="moneys-list-note">And '+(w.bills.length-3)+' more before '+(w.nextPay?"payday":"the end of the 14-day window")+'.</p>':"")+'</div>':
+      nothing(w.nextPay?"No unpaid bills scheduled before the next payday.":"No unpaid bills scheduled in the next 14 days.","simple-bills","Set up bills"))+
+   '</section>';
  return hero+essentials+
-   '<section class="moneys-surface">'+cardTitle("Where it's going","insights","This month")+
+   '<section class="moneys-surface">'+cardTitle("Monthly category caps","budgets","Manage caps")+caps+'</section>'+
+   upcoming+
+   '<section class="moneys-surface">'+cardTitle("Where it went","insights","This month")+
      categoryBars(spending.groups,4,true)+'</section>'+
    '<section class="moneys-surface">'+cardTitle("Recent spending","history","See all")+recent(f,3)+'</section>'+
    needReview(count)+
    '<div class="moneys-quick">'+btn("simple-add","<span>＋</span> Add expense")+
-   btn("simple-transfer","↔ Transfer")+btn("simple-review","Review")+'</div>';
+   btn("simple-bills","Bills")+btn("simple-limits","Monthly caps")+'</div>';
 }
 const breakdownOptions=[["7d","7 days"],["30d","30 days"],["90d","90 days"]];
 function spending(f,today,period){
@@ -173,7 +202,8 @@ function bills(f,today,index,whatIf){
  const stat=current?'<section class="moneys-bills-hero"><div><span>Starting paycheck</span><strong>'+USD(current.incomeCents)+'</strong></div>'+
    '<div><span>Bills assigned</span><strong>−'+USD(current.billCents)+'</strong></div>'+
    '<div><span>Spent so far</span><strong>−'+USD(current.otherCents)+'</strong></div>'+
-   '<div class="moneys-total"><span>Left from this check</span><strong>'+USD(current.leftCents)+'</strong></div></section>':
+   '<div class="moneys-total"><span>Planned remainder</span><strong>'+USD(current.leftCents)+'</strong></div>'+
+   '<p class="moneys-bills-note">Expected paycheck − assigned bills − recorded spending. This is a plan, not your bank balance.'+(current.received?'':' Paycheck not marked received.')+'</p></section>':
    '<div class="moneys-surface">'+nothing("No paycheck for this period. Set up a recurring payday.","paycheck-setup","Add payday")+'</div>';
  const planning=window.CommandMoneyPlanning;
  const due=planning.occurrences(f.budgetPlan,today,dateShift(today,35),f.transactions).filter(x=>x.kind==="expense"&&!x.settled).slice(0,4);
