@@ -409,6 +409,17 @@ html,body{background:var(--bg)}
 .moneys-bar-row>small{font-size:10px;color:var(--muted);text-align:right}
 .moneys-meter{height:8px;border-radius:10px;background:#394247;overflow:hidden}
 .moneys-meter i{height:100%;display:block;background:linear-gradient(90deg,#70d398,#9df0b9);border-radius:10px}
+.moneys-limits{display:grid;gap:15px}
+.moneys-limit-row{display:grid;gap:6px}
+.moneys-limit-top{display:flex;justify-content:space-between;gap:9px;align-items:baseline;font-size:12px}
+.moneys-limit-top strong{font-size:12px;font-weight:700;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.moneys-limit-top b{font-weight:760;white-space:nowrap;color:var(--mint)}
+.moneys-limit-top b.is-over{color:#efbd90}
+.moneys-limit-row .moneys-meter{height:9px}
+.moneys-meter.is-over i{background:linear-gradient(90deg,#d59661,#efba87)}
+.moneys-limit-row small{font-size:11px;color:var(--muted)}
+.moneys-list-note,.moneys-bills-note{font-size:11px;line-height:1.55;color:var(--muted);margin:8px 0 0}
+.moneys-bills-note{color:#d3e4d9}
 .moneys-recent{margin:0 -3px}
 .moneys-recent>button{border:0;background:transparent;color:var(--text);width:100%;padding:11px 4px;
   display:grid;grid-template-columns:32px minmax(0,1fr) auto auto;align-items:center;gap:9px;text-align:left;
