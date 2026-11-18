@@ -157,13 +157,13 @@ function create({getEvents,updateEvents,getSchedulePrefs,setSchedulePrefs,showSh
      timeSummary(totals)+'</section>';
  }
  function workShiftRow(e,date){
-  return '<button class="schedule-compact-shift'+zoneStyle(e)+'" data-action="schedule-edit" data-id="'+esc(e.id)+'"><span class="schedule-compact-day">'+esc(labelDate(date))+'</span><span class="schedule-compact-main"><strong>'+esc(fmtTime(e))+'</strong><small>'+esc(workMeta(e)||"Work shift")+'</small></span><strong class="schedule-compact-hours" title="Full scheduled duration">'+esc(duration(e))+'</strong></button>';
+  return '<button class="schedule-compact-shift'+(ui.mode==="week"&&date===ui.selected?" is-selected-date":"")+zoneStyle(e)+'" data-action="schedule-edit" data-id="'+esc(e.id)+'"><span class="schedule-compact-day">'+esc(labelDate(date))+'</span><span class="schedule-compact-main"><strong>'+esc(fmtTime(e))+'</strong><small>'+esc(workMeta(e)||"Work shift")+'</small></span><strong class="schedule-compact-hours" title="Full scheduled duration">'+esc(duration(e))+'</strong></button>';
  }
  function workShiftList(){
  const days=daysForView().map(localDate),count=days.reduce((n,d)=>n+dateEvents(d,"work").length,0);
  const rows=days.map(date=>{
   const items=dateEvents(date,"work");
-  if(!items.length)return ui.mode==="week"?'<div class="schedule-compact-off"><span>'+esc(labelDate(date))+'</span><small>No shift saved</small></div>':"";
+  if(!items.length)return ui.mode==="week"?'<div class="schedule-compact-off'+(date===ui.selected?" is-selected-date":"")+'"><span>'+esc(labelDate(date))+'</span><small>No shift saved</small></div>':"";
   return items.map(e=>workShiftRow(e,date)).join("");
  }).join("");
  return '<section class="section schedule-agenda schedule-work-list"><div class="section-head"><h2>Shifts</h2><span class="muted">'+count+' scheduled</span></div>'+
@@ -311,7 +311,7 @@ function eventForm(item={}){
   const domain=item.domain|| (ui.domain==="all"?"personal":ui.domain);
   const date=item.date||ui.selected;
   const val=(x)=>esc(item[x]??"");
-  const title=item.id?"Edit event":"New event";
+  const title=item.id?(domain==="work"?"Edit shift":"Edit event"):(domain==="work"?"Add shift":"New event");
   showSheet('<div class="sheet-head"><h2 class="sheet-title">'+title+'</h2><button class="icon-button" data-action="close-modal" aria-label="Close">'+ic("x")+'</button></div>'+
    '<form id="schedule-event-form" data-id="'+val("id")+'"><div class="field"><label for="ev-title">Title</label><input id="ev-title" required name="title" value="'+val("title")+'" placeholder="Work shift, Biology lab, appointment"></div>'+
    '<div class="form-grid"><div class="field"><label for="ev-domain">Calendar</label><select id="ev-domain" name="domain">'+Object.keys(DOMAINS).map(d=>'<option value="'+d+'" '+(domain===d?"selected":"")+'>'+DOMAINS[d].label+'</option>').join("")+'</select></div><div class="field"><label for="ev-date">Date</label><input id="ev-date" type="date" required name="date" value="'+esc(date)+'"></div></div>'+
@@ -635,7 +635,7 @@ function eventForm(item={}){
  }
  function handleAction(b){
   const action=b.dataset.action;
-  if(action==="schedule-jump"){ui.domain=b.dataset.domain||"work";if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="scheduled"))ui.mode="week";if(b.dataset.date){ui.selected=b.dataset.date;ui.mode="week";ui.periodMode="work";}openSchedule();return true;}
+  if(action==="schedule-jump"){ui.domain=b.dataset.domain||"work";if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="scheduled"))ui.mode="week";if(b.dataset.date){ui.selected=b.dataset.date;ui.mode="week";}openSchedule();return true;}
   if(!action.startsWith("schedule-"))return false;
   if(action==="schedule-domain"){ui.domain=b.dataset.domain;if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="scheduled"))ui.mode="week";rememberUi();openSchedule(false);}
   if(action==="schedule-mode"){ui.mode=b.dataset.mode;rememberUi();openSchedule(false);}
@@ -748,8 +748,12 @@ function eventForm(item={}){
     zoneColor:domain==="work"?String(values.get("zoneColor")||""):"",
     notes:String(values.get("notes")||"").trim().slice(0,2000),repeat,weekdays,until};
    if(!item.title){alert("Enter a title.");return true;}
+   ui.selected=date;
+   ui.domain=domain;
+   if((domain==="work"&&ui.mode==="day")||(domain!=="work"&&ui.mode==="scheduled"))ui.mode="week";
+   rememberUi();
    updateEvents(events().some(e=>e.id===id)?events().map(e=>e.id===id?item:e):[...events(),item]);
-   ui.selected=date;closeSheet();toast("Event saved");return true;
+   closeSheet();toast(domain==="work"?"Shift saved":"Event saved");return true;
   }
   if(form.id==="schedule-import-form"){
    const draft=ui.workingImport;if(!draft)return true;
@@ -772,7 +776,12 @@ function eventForm(item={}){
       notes:String(v.get("notes-"+i)||"").trim(),breakMinutes:manualBreak,repeat:"none",weekdays:[],until:""});
    }
    if(!incoming.length){toast("No new events selected");return true;}
-   updateEvents([...events(),...incoming]);ui.domain=draft.domain;ui.selected=incoming[0].date;ui.workingImport=null;closeSheet();toast(incoming.length+" event"+(incoming.length===1?"":"s")+" added");return true;
+   ui.domain=draft.domain;
+   ui.selected=incoming[0].date;
+   if((ui.domain==="work"&&ui.mode==="day")||(ui.domain!=="work"&&ui.mode==="scheduled"))ui.mode="week";
+   rememberUi();
+   updateEvents([...events(),...incoming]);
+   ui.workingImport=null;closeSheet();toast(incoming.length+" event"+(incoming.length===1?"":"s")+" added");return true;
   }
   return false;
  }
