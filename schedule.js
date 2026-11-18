@@ -501,6 +501,7 @@ function eventForm(item={}){
   ui.ocrBusy=true;
   const button=document.querySelector('[data-action="schedule-ocr"]');
   if(button)button.disabled=true;
+  const activeDraft=ui.workingImport;
   let worker;
   try{
    status.textContent="Loading text reader…";await loadTesseract();
@@ -517,6 +518,23 @@ function eventForm(item={}){
    const reconcile=rows=>parser.reconcileRows(rows,domain,usualWorkdays());
    for(let i=0;i<files.length;i++){
     status.textContent="Reading screenshot "+(i+1)+" of "+files.length+"…";
+    // Source schedule uses distinct blue cards. Read each card and its own
+    // date gutter, rather than merging unrelated dates across OCR passes.
+    let cards=null;
+    try{
+      cards=await window.CommandScheduleCardOCR?.read(files[i],worker,yr,mo,domain,
+        message=>{if(status)status.textContent="Image "+(i+1)+": "+message;});
+    }catch(error){console.warn("Card-layout reader unavailable; trying generic OCR",error);}
+    if(cards?.recognized){
+      let dates=0,missing=0;
+      for(const item of cards.rows){
+        if(item.date&&item.startTime&&item.endTime){detected.push(item);dates++;}
+        else {undated.push(item);missing++;}
+      }
+      diagnostics.push({image:i+1,method:"cards",cards:cards.rows.length,
+        dated:dates,dateNeeded:missing,reviewOnly:cards.rows.filter(r=>r._include===false).length});
+      continue;
+    }
     const primary=await worker.recognize(files[i],{}, {text:true,tsv:true});
     const original=primary.data?.text||"";
     texts.push(original);
@@ -579,17 +597,20 @@ function eventForm(item={}){
     });
    }
    const draft=ui.workingImport;
-   if(!draft)return;
+   if(!draft||draft!==activeDraft)return;
    draft.domain=domain;
    draft.raw=texts.filter(Boolean).join("\n");
    raw.value=draft.raw;
    draft.ocrRows=reconcile(detected);
    draft.rows=[...draft.ocrRows,...undated];
    draft.openReviewId=undefined;
-   const report=["Command v39 schedule OCR diagnostics",
+   const report=["Command v40 schedule OCR diagnostics",
      "Selected month: "+yr+"-"+String(mo).padStart(2,"0"),
      "Images: "+files.length,
-     ...diagnostics.map(x=>"Image "+x.image+": first pass "+x.primaryTimes+" times / "+x.firstDated+
+     ...diagnostics.map(x=>x.method==="cards"?
+       "Image "+x.image+": "+x.cards+" shift cards, "+x.dated+
+       " dated, "+x.dateNeeded+" need date/time, "+x.reviewOnly+" need confirmation":
+       "Image "+x.image+": first pass "+x.primaryTimes+" times / "+x.firstDated+
        " dated; enhanced "+(x.enhanced?"yes":"unavailable")+
        "; top crop "+(x.top?"yes":"not needed")+
        "; strongest read "+x.visibleTimes+" times, "+x.dated+" dated, "+x.dateNeeded+

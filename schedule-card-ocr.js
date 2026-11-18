@@ -88,7 +88,7 @@ function cardRow(cardText,dateInfo,domain,year,month){
  const time=parser.timeRange(cardText);
  if(!time)return emptyRow(domain,null,dateInfo);
  const date=dateInfo?.date||isoDate(year,month,1);
- const rows=parser.parseText(date+"\n"+time.matched+"\n"+cardText,domain,year,month);
+ const rows=parser.parseText(date+"\n"+cardText,domain,year,month);
  let parsed=rows.find(x=>x.startTime===time.startTime&&x.endTime===time.endTime);
  if(!parsed){
   parsed=parser.timeOnlyRows(cardText,domain)[0]||null;
