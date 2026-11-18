@@ -1,6 +1,6 @@
 (function(){
  "use strict";
- const KEY="command.finance.v1", RECOVERY="command.finance.beforeImport", CLOUD_VERIFIED="command.finance.cloudVerified";
+ const KEY="command.finance.v1", RECOVERY="command.finance.beforeImport", UNREADABLE="command.finance.unreadableBeforeRecovery", CLOUD_VERIFIED="command.finance.cloudVerified";
  const FORMAT="everyday-section-v1";
  const iso=x=>typeof x==="string"&&/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(x)&&!Number.isNaN(Date.parse(x+"T12:00:00Z"))&&new Date(x+"T12:00:00Z").toISOString().slice(0,10)===x;
  const day=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
@@ -124,17 +124,43 @@
  let spendPeriod="30d",billCheckIndex=0,newKind="expense";
  function read(){
    const raw=localStorage.getItem(KEY);
-   if(!raw){record=null;return;}
+   if(!raw){record=null;verified=false;error="";return;}
    try{
      const saved=JSON.parse(raw);
      if(saved?.format!=="command-finance-v1"||!saved.data)throw Error("Unknown stored finance format.");
      const check=validateFile({format:FORMAT,section:"finances",data:saved.data});
      record={...saved,report:check.report};
-     verified=false;
-     sha(saved.data).then(d=>{verified=d===saved.sha256;dispatch();}).catch(()=>{verified=false;dispatch();});
-   }catch(err){error="Finance could not be read. The original local data has not been replaced: "+err.message;record=null;}
+     error="";verified=false;
+     sha(saved.data).then(d=>{
+       if(record?.sha256!==saved.sha256)return;
+       verified=d===saved.sha256;
+       if(!verified){
+         error="The saved finance checksum does not match. The original stored data was left untouched.";
+         record=null;
+       }
+       dispatch();
+     }).catch(()=>{
+       if(record?.sha256!==saved.sha256)return;
+       verified=false;record=null;
+       error="The saved finance checksum could not be verified. The original stored data was left untouched.";
+       dispatch();
+     });
+   }catch(err){
+     verified=false;record=null;
+     error="Finance could not be read. The original local data has not been replaced: "+err.message;
+   }
  }
  const dispatch=()=>window.dispatchEvent(new CustomEvent("command-money-updated"));
+ // Keep a damaged raw ledger separate from the last verified recovery copy.
+ // If storage cannot preserve the previous bytes, do not overwrite them.
+ function preserveFinanceBeforeReplace(){
+   const existing=localStorage.getItem(KEY);
+   if(!existing)return;
+   const destination=record?RECOVERY:UNREADABLE;
+   localStorage.setItem(destination,existing);
+   if(localStorage.getItem(destination)!==existing)
+     throw Error("Could not preserve existing finance data. Restore was stopped.");
+ }
  async function startFresh(){
    if(record||localStorage.getItem(KEY))throw Error("Money already has saved data. Your existing records were not changed.");
    const finance={transactions:[],archivedTransactions:[],classificationRules:[],
@@ -168,10 +194,7 @@
    if(record?.sha256===pending.sha256){pending=null;dispatch();return;}
    // No automatic merge or overwrite: an updated export has to be consciously
    // reviewed, and the previous local copy is preserved for recovery.
-   if(record){
-     const prev=localStorage.getItem(KEY);
-     if(prev)localStorage.setItem(RECOVERY,prev);
-   }
+   preserveFinanceBeforeReplace();
    const saved={format:"command-finance-v1",sourceFormat:FORMAT,importedAt:new Date().toISOString(),
      sourceFilename:pending.filename,sha256:pending.sha256,data:pending.finance};
    const serialized=JSON.stringify(saved);
@@ -179,7 +202,7 @@
    if(localStorage.getItem(KEY)!==serialized)throw Error("Saved data did not match on read-back.");
    const checked=validateFile({format:FORMAT,section:"finances",data:JSON.parse(localStorage.getItem(KEY)).data});
    if(JSON.stringify(checked.report)!==JSON.stringify(pending.report))throw Error("Imported finance totals changed unexpectedly.");
-   record={...saved,report:checked.report};verified=true;pending=null;
+   record={...saved,report:checked.report};verified=true;pending=null;error="";
    dispatch();
  }
  function download(filename,content){
@@ -795,17 +818,14 @@
    }
    const current=record?.report?.transactions??0;
    if(prompt("Verified cloud backup has "+report.transactions+" transactions, "+report.schedules+" recurring items, "+report.categoryLimits+" category limits (local copy: "+current+" transactions). Restoring replaces the local Money copy but keeps an on-device recovery snapshot. Type RESTORE to continue.")!=="RESTORE")return;
-   if(record){
-     const previous=localStorage.getItem(KEY);
-     if(previous)localStorage.setItem(RECOVERY,previous);
-   }
+   preserveFinanceBeforeReplace();
    const saved={format:"command-finance-v1",sourceFormat:FORMAT,importedAt:new Date().toISOString(),
      sourceFilename:"Google cloud backup",sha256:back.sha256,data:back.data};
    const serialized=JSON.stringify(saved);
    localStorage.setItem(KEY,serialized);
    if(localStorage.getItem(KEY)!==serialized||await sha(saved.data)!==back.sha256)
      throw Error("Cloud restore verification failed. Previous data is saved in recovery.");
-   record={...saved,report:report};verified=true;pending=null;
+   record={...saved,report:report};verified=true;pending=null;error="";
    stampCloud(back.revision,back.sha256);dispatch();
    alert("Cloud money restored and verified. Everyday's data was not touched.");
  }
@@ -820,6 +840,8 @@
      e(error)+'</p><p>Your saved financial data has not been deliberately deleted. Do not reset or clear the app.</p></div>'+
      importControl+'<button class="button" data-money-action="cloud-check">Check cloud backup</button>'+
      '<button class="button secondary" data-money-action="pick-file">Import a verified finance JSON</button>'+
+     '<p class="money-help">Unreadable local data will be preserved separately before replacement.</p>'+
+     previewView()+
      '<div id="money-sync-panel">'+syncControls+'</div>';
    if(!record)return ui.advancedHeader("Set up Money","Your history and financial records can be imported without adding sample data.")+
      '<div class="moneys-surface"><h2>No money records on this device</h2>'+
