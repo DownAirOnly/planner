@@ -576,8 +576,16 @@
  async function applySyncedData(snapshot,expectedLocalHash){
    if(isSyncEditing())throw Error("Close your open Money editor before applying cloud changes.");
    const raw=localStorage.getItem(KEY);
-   const current=raw?JSON.parse(raw):null;
-   if((current?.sha256??null)!==(expectedLocalHash??null))
+   let current=null;
+   try{current=raw?JSON.parse(raw):null;}
+   catch{
+     // Explicit cloud recovery may replace unreadable data, but only after
+     // preserving its raw bytes. Automatic sync with an expected local hash
+     // must still reject an unreadable record.
+     if(record||expectedLocalHash!=null)
+       throw Error("Money cannot verify the local record. No data was changed.");
+   }
+   if(record?(current?.sha256??null)!==(expectedLocalHash??null):expectedLocalHash!=null)
      throw Error("Money changed locally while downloading. Nothing was replaced.");
    const checked=validateFile({format:FORMAT,section:"finances",data:snapshot?.data});
    const digest=await sha(checked.finance);
@@ -589,7 +597,7 @@
      sourceFilename:current?.sourceFilename||"Verified Google Money sync",
      sha256:digest,data:checked.finance,syncedAt:new Date().toISOString()};
    const serialized=JSON.stringify(stored);
-   if(raw)localStorage.setItem(RECOVERY,raw);
+   if(raw)preserveFinanceBeforeReplace();
    localStorage.setItem(KEY,serialized);
    if(localStorage.getItem(KEY)!==serialized||await sha(JSON.parse(serialized).data)!==digest)
      throw Error("Cloud Money restore did not verify. The previous copy was preserved.");
