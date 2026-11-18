@@ -1,5 +1,14 @@
 # Command
 
+## v40.1 — Schedule selection and editing reliability
+
+- The selected day is indicated in the existing Work Week shift list without rearranging the approved layout.
+- Saving or importing a shift displays the correct date and calendar immediately, including when the date or calendar changes.
+- Opening a work shift from Home preserves the chosen Pay Week / Work Week grouping.
+- Work shift editors say Add shift / Edit shift rather than generic event wording.
+- The OCR importer and saved shifts are unchanged; v40 screenshot detection remains in place.
+
+
 ## v8 — Life areas and chosen priorities
 
 - Navigation: Home, Schedule, Areas, Inbox.
