@@ -366,6 +366,21 @@ html,body{background:var(--bg)}
 @media(max-width:390px){.money-paycheck-head strong{font-size:17px}.money-paycheck-available strong{font-size:16px}}
 
 
+/* v42 — quick task triage with separate chosen and suggested Home priorities. */
+.home-task-count{margin:6px 0 0;color:var(--muted);font-size:11px;line-height:1.35}
+.suggestion-controls{justify-content:flex-start;padding:6px 0 1px}
+.suggestion-controls .button{min-height:35px;padding:8px 11px;font-size:11px}
+.task-pin{flex:0 0 auto;align-self:center;background:#263c34;border:1px solid #426454;border-radius:9px;color:var(--mint);font-weight:700;font-size:11px;padding:7px 9px;min-height:32px;white-space:nowrap}
+.task-pin[aria-pressed="true"]{background:#34413d;color:var(--text)}
+.task-filter-bar{flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;padding-bottom:3px}
+.task-filter-bar::-webkit-scrollbar{display:none}
+.task-filter-bar .filter{flex:0 0 auto}
+.task-results-count{color:var(--muted);font-size:11px;margin:0 0 9px}
+@media(max-width:400px){
+  .task-item{gap:8px;padding:12px 10px}
+  .task-pin{font-size:10px;padding:6px 7px;min-height:30px}
+}
+
 /* v36 — Money redesign. All styles are scoped to the simplified Money surface. */
 .moneys-shell{width:100%;max-width:770px;margin:0 auto;padding-bottom:30px;color:var(--text)}
 .moneys-shell button{touch-action:manipulation}
