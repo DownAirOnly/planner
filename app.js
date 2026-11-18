@@ -1,6 +1,6 @@
 (function app(){
   "use strict";
-  const APP_VERSION = 42;
+  const APP_VERSION = 42.1;
   const KEY = "command.v1";
   const $ = (sel) => document.querySelector(sel);
   const screen = $("#screen");
@@ -67,13 +67,16 @@
   }
   // Ready items are confirmed and organized. Captures in Inbox are not
   // promoted automatically, nor are tasks under blocked/waiting projects.
-  function actionableTask(t){
-    if(t.needsReview||!["open","in_progress"].includes(t.status))return false;
+  function organizedTask(t){
+    if(t.needsReview)return false;
     if(t.projectId){
       const project=data.projects.find(p=>p.id===t.projectId);
       return !!project&&project.status==="active"&&!project.needsReview&&!project.blocker;
     }
     return !!validArea(t.areaId);
+  }
+  function actionableTask(t){
+    return ["open","in_progress"].includes(t.status)&&organizedTask(t);
   }
   function dueText(d){
     if(!d)return "";
@@ -133,7 +136,9 @@
         return '<button class="home-area-link home-area-'+id+'" data-action="area-detail" data-id="'+id+'"><strong>'+escapeHtml(areaName(id))+'</strong><span>'+(total?total+' open item'+(total===1?"":"s"):"Open area")+'</span>'+icon("chevron-right","tiny")+'</button>';
       }).join("")+'</div></section>';
     const visibleIds=new Set([...pinned,...suggested].map(t=>t.id));
-    const followups=data.tasks.filter(t=>t.kind==="followup"&&!t.needsReview&&isOpen(t)&&t.dueDate&&t.dueDate<=today()&&!visibleIds.has(t.id)).sort(taskSort).slice(0,3);
+    const followups=data.tasks.filter(t=>t.kind==="followup"&&organizedTask(t)&&
+      ["open","in_progress","waiting"].includes(t.status)&&t.dueDate&&t.dueDate<=today()&&
+      !visibleIds.has(t.id)&&!data.dismissed.includes(t.id)).sort(taskSort).slice(0,3);
     const upcoming=schedule.homeSummary();
     const followupSection=followups.length?'<section class="section home-content-section"><div class="section-head"><h2>Follow-ups</h2></div>'+followups.map(taskRow).join("")+'</section>':'';
     return top+quick+starting+pinnedSection+suggestedSection+reviewSection+projectSection+areasHtml+upcoming+followupSection+schedule.homeWorkShifts();
