@@ -91,19 +91,21 @@
     return '<button type="button" class="project-card click-card" data-action="project-detail" data-id="'+escapeHtml(p.id)+'"><div class="project-top"><span class="project-emoji">'+escapeHtml(symbol)+'</span>'+badge(p.status)+(p.blocker?' <span class="chip blocked">Blocker</span>':'')+'</div><h3>'+escapeHtml(p.title)+'</h3><p>'+escapeHtml(areaName(p.areaId))+'</p><div class="project-next"><strong>Next</strong> · '+escapeHtml(p.blocker?'Resolve blocker':p.next||'Add a next action')+'</div><div class="card-meta">'+(p.needsReview?'Review status · ':'')+open+' open task'+(open===1?"":"s")+'</div></button>';
   }
   function focusControls(t,index){return '<div class="focus-controls"><button class="button quiet" data-action="unpin" data-id="'+escapeHtml(t.id)+'">Unpin</button>'+(index>0?'<button class="button quiet" data-action="move-pin" data-id="'+escapeHtml(t.id)+'">Move up</button>':'')+'</div>';}
+  function suggestionControls(t){return '<div class="focus-controls suggestion-controls"><button class="button secondary" data-action="pin" data-id="'+escapeHtml(t.id)+'">Pin to Up next</button><button class="button quiet" data-action="dismiss" data-id="'+escapeHtml(t.id)+'">Dismiss</button></div>';}
   function home(){
     const isOpen=t=>t.status!=="done";
     const activeTasks=data.tasks.filter(isOpen);
     const activeProjects=data.projects.filter(p=>p.status!=="done"&&p.status!=="parked");
     const pinned=data.focus.map(id=>data.tasks.find(t=>t.id===id)).filter(t=>t&&isOpen(t));
-    const ready=activeTasks.filter(t=>!t.needsReview&&["open","in_progress"].includes(t.status)&&!data.focus.includes(t.id)&&(!t.projectId||data.projects.some(p=>p.id===t.projectId&&p.status==="active"&&!p.needsReview&&!p.blocker))).sort(taskSort).slice(0,3);
+    const suggested=activeTasks.filter(t=>actionableTask(t)&&!data.focus.includes(t.id)&&!data.dismissed.includes(t.id)).sort(taskSort).slice(0,3);
     const review=activeTasks.filter(t=>t.needsReview).sort(taskSort).slice(0,3);
     const projects=[...activeProjects].sort((a,b)=>
       Number(!!a.needsReview)-Number(!!b.needsReview)||Number(a.status!=="active")-Number(b.status!=="active")
     ).slice(0,3);
-    const focus=pinned.length?pinned:ready;
     const dayText=new Date().toLocaleDateString(undefined,{weekday:"long",month:"short",day:"numeric"});
-    const top='<div class="home-lead"><div class="home-lead-text"><span class="home-date">'+escapeHtml(dayText)+'</span><h1>Today</h1></div>'+
+    const dueCount=activeTasks.filter(t=>t.dueDate&&t.dueDate<=today()&&t.status!=="blocked"&&!t.needsReview).length;
+    const top='<div class="home-lead"><div class="home-lead-text"><span class="home-date">'+escapeHtml(dayText)+'</span><h1>Today</h1>'+
+      '<p class="home-task-count">'+activeTasks.length+' open item'+(activeTasks.length===1?"":"s")+(dueCount?' · '+dueCount+' due or overdue':'')+'</p></div>'+
       '<button class="button home-capture" data-action="quick-add">'+icon("plus")+' Capture</button></div>';
     const quick='<div class="home-quick-actions" aria-label="Add to Command">'+
       '<button class="home-quick-action" data-action="edit" data-kind="task">'+icon("check")+'<span>Task</span></button>'+
@@ -111,12 +113,15 @@
       '<button class="home-quick-action" data-action="home-add-plan">'+icon("calendar")+'<span>Plan</span></button></div>';
     const noPersonalData=!data.tasks.length&&!data.projects.length&&!data.ideas.length;
     const starting=noPersonalData?'<div class="home-start-card"><strong>Your list is empty</strong><p>Add something you actually want to track. Tasks and projects will appear here automatically.</p></div>':'';
-    const focusSection=focus.length?
-      '<section class="section home-content-section"><div class="section-head"><h2>'+(pinned.length?"Up next":"Tasks")+'</h2><button class="subtle-link" data-action="tab" data-view="tasks">All items</button></div>'+
-      focus.map((t,i)=>'<div class="focus-item">'+taskRow(t)+(pinned.length?focusControls(t,i):"")+'</div>').join("")+'</section>':
-      (review.length?
-       '<section class="section home-content-section"><div class="section-head"><h2>Needs review</h2><button class="subtle-link" data-action="tab" data-view="inbox">Inbox</button></div>'+
-       review.map(t=>'<div class="focus-item">'+taskRow(t)+'</div>').join("")+'</section>':'');
+    const pinnedSection=pinned.length?
+      '<section class="section home-content-section"><div class="section-head"><h2>Up next</h2><button class="subtle-link" data-action="tab" data-view="tasks">All tasks</button></div>'+
+      pinned.map((t,i)=>'<div class="focus-item">'+taskRow(t)+focusControls(t,i)+'</div>').join("")+'</section>':"";
+    const suggestedSection=suggested.length?
+      '<section class="section home-content-section"><div class="section-head"><h2>Suggested next</h2><button class="subtle-link" data-action="tasks-ready">Ready tasks</button></div>'+
+      suggested.map(t=>'<div class="focus-item">'+taskRow(t)+suggestionControls(t)+'</div>').join("")+'</section>':"";
+    const reviewSection=!pinned.length&&!suggested.length&&review.length?
+      '<section class="section home-content-section"><div class="section-head"><h2>Needs review</h2><button class="subtle-link" data-action="notifications">Inbox</button></div>'+
+      review.map(t=>'<div class="focus-item">'+taskRow(t)+'</div>').join("")+'</section>':"";
     const projectSection=projects.length?
       '<section class="section home-content-section"><div class="section-head"><h2>Projects</h2><button class="subtle-link" data-action="tab" data-view="areas">All areas</button></div><div class="project-summary-list">'+
       projects.map(p=>'<button class="project-summary-row" data-action="project-detail" data-id="'+escapeHtml(p.id)+'"><span class="project-summary-name">'+escapeHtml(p.title)+'</span><span class="project-summary-next">'+(p.needsReview?'<span class="chip waiting">Review</span>':p.blocker?'<span class="chip blocked">Blocker</span>':escapeHtml(p.next||"Open project"))+'</span>'+icon("chevron-right","tiny")+'</button>').join("")+'</div></section>':'';
@@ -127,10 +132,11 @@
           activeTasks.filter(t=>(data.projects.find(p=>p.id===t.projectId)?.areaId||t.areaId)===id).length;
         return '<button class="home-area-link home-area-'+id+'" data-action="area-detail" data-id="'+id+'"><strong>'+escapeHtml(areaName(id))+'</strong><span>'+(total?total+' open item'+(total===1?"":"s"):"Open area")+'</span>'+icon("chevron-right","tiny")+'</button>';
       }).join("")+'</div></section>';
-    const followups=data.tasks.filter(t=>t.kind==="followup"&&!t.needsReview&&isOpen(t)&&t.dueDate&&t.dueDate<=today()).sort(taskSort).slice(0,3);
+    const visibleIds=new Set([...pinned,...suggested].map(t=>t.id));
+    const followups=data.tasks.filter(t=>t.kind==="followup"&&!t.needsReview&&isOpen(t)&&t.dueDate&&t.dueDate<=today()&&!visibleIds.has(t.id)).sort(taskSort).slice(0,3);
     const upcoming=schedule.homeSummary();
     const followupSection=followups.length?'<section class="section home-content-section"><div class="section-head"><h2>Follow-ups</h2></div>'+followups.map(taskRow).join("")+'</section>':'';
-    return top+quick+starting+focusSection+projectSection+areasHtml+upcoming+followupSection+schedule.homeWorkShifts();
+    return top+quick+starting+pinnedSection+suggestedSection+reviewSection+projectSection+areasHtml+upcoming+followupSection+schedule.homeWorkShifts();
   }
   function areas(){
     if(state.areaId)return areaDetail();
