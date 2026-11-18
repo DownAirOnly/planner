@@ -6,7 +6,7 @@
 - **Suggested next** separately offers up to three actionable, confirmed tasks from organized areas or active, unblocked projects. Fresh Inbox captures, unreviewed legacy tasks, and work in blocked/waiting projects are never automatically promoted.
 - Suggestions have Pin and Dismiss controls. Dismissed tasks are excluded from future suggestions until restored using the Inbox bell. Pinning clears dismissal; deleting tasks also removes stale priority references.
 - **Tasks** has Open, Ready, Waiting, Done, and All filters with horizontal mobile scrolling. Task rows allow one-tap Pin / Unpin without opening the editor.
-- Home shows open and due/overdue counts, and avoids repeating selected follow-ups in both priorities and the follow-up section.
+- Home shows open and due/overdue counts, and avoids repeating selected follow-ups in both priorities and the follow-up section. Organized follow-ups waiting for replies may remain due; dismissed and Inbox-only follow-ups do not reappear as reminders.
 - No new schema, migration, invented tasks, or changes to Schedule, Money, or saved calendar entries.
 
 
