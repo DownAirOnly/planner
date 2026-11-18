@@ -65,14 +65,25 @@
     if(!a.dueDate && b.dueDate)return 1;
     const order={high:0,medium:1,low:2};return order[a.priority]-order[b.priority];
   }
+  // Ready items are confirmed and organized. Captures in Inbox are not
+  // promoted automatically, nor are tasks under blocked/waiting projects.
+  function actionableTask(t){
+    if(t.needsReview||!["open","in_progress"].includes(t.status))return false;
+    if(t.projectId){
+      const project=data.projects.find(p=>p.id===t.projectId);
+      return !!project&&project.status==="active"&&!project.needsReview&&!project.blocker;
+    }
+    return !!validArea(t.areaId);
+  }
   function dueText(d){
     if(!d)return "";
     const label=niceDate(d);
     return d<today()?'<span class="priority-high">Overdue · '+escapeHtml(label)+'</span>':"Due "+escapeHtml(label);
   }
-  function taskRow(t){
-    const done=t.status==="done";
-    return '<div class="task-item"><button type="button" class="task-check '+(done?"checked":"")+'" data-action="toggle-task" data-id="'+escapeHtml(t.id)+'" aria-label="'+(done?"Mark incomplete":"Mark complete")+'">'+(done?icon("check"):"")+'</button><div class="task-body"><p class="task-name '+(done?"finished":"")+'">'+escapeHtml(t.title)+'</p><div class="task-info"><span>'+escapeHtml(t.projectId?projectName(t.projectId):areaName(t.areaId))+'</span>'+(t.dueDate?'<span>'+dueText(t.dueDate)+'</span>':"")+(t.priority==="high"&&!done?'<span class="priority-high">High priority</span>':"")+(t.status==="waiting"?'<span>Waiting</span>':"")+(t.status==="blocked"?'<span class="priority-high">Blocked</span>':"")+(t.kind!=="task"?'<span>'+escapeHtml(itemKinds.find(k=>k[0]===t.kind)?.[1]||'Task')+'</span>':'')+(t.needsReview?'<span>Review status</span>':'')+'</div></div><button type="button" class="task-edit" data-action="edit" data-kind="task" data-id="'+escapeHtml(t.id)+'" aria-label="Edit '+escapeHtml(t.title)+'">'+icon("more")+'</button></div>';
+  function taskRow(t,showPin=false){
+    const done=t.status==="done",pinned=data.focus.includes(t.id);
+    const pin=showPin&&(!done||pinned)?'<button type="button" class="task-pin" data-action="'+(pinned?"unpin":"pin")+'" data-id="'+escapeHtml(t.id)+'" aria-pressed="'+pinned+'" aria-label="'+(pinned?"Unpin ":"Pin ")+escapeHtml(t.title)+'">'+(pinned?"Unpin":"Pin")+'</button>':"";
+    return '<div class="task-item"><button type="button" class="task-check '+(done?"checked":"")+'" data-action="toggle-task" data-id="'+escapeHtml(t.id)+'" aria-label="'+(done?"Mark incomplete":"Mark complete")+'">'+(done?icon("check"):"")+'</button><div class="task-body"><p class="task-name '+(done?"finished":"")+'">'+escapeHtml(t.title)+'</p><div class="task-info"><span>'+escapeHtml(t.projectId?projectName(t.projectId):areaName(t.areaId))+'</span>'+(t.dueDate?'<span>'+dueText(t.dueDate)+'</span>':"")+(t.priority==="high"&&!done?'<span class="priority-high">High priority</span>':"")+(t.status==="in_progress"?'<span>In progress</span>':"")+(t.status==="waiting"?'<span>Waiting</span>':"")+(t.status==="blocked"?'<span class="priority-high">Blocked</span>':"")+(t.kind!=="task"?'<span>'+escapeHtml(itemKinds.find(k=>k[0]===t.kind)?.[1]||'Task')+'</span>':'')+(t.needsReview?'<span>Review status</span>':'')+'</div></div>'+pin+'<button type="button" class="task-edit" data-action="edit" data-kind="task" data-id="'+escapeHtml(t.id)+'" aria-label="Edit '+escapeHtml(t.title)+'">'+icon("more")+'</button></div>';
   }
   function projectCard(p){
     const open=data.tasks.filter(t=>t.projectId===p.id&&t.status!=="done").length;
