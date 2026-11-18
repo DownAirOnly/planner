@@ -243,6 +243,7 @@
 .schedule-compact-hours{font-size:12px;font-weight:750;color:var(--mint);flex:none;font-variant-numeric:tabular-nums}
 .schedule-compact-off{display:flex;justify-content:space-between;align-items:center;min-height:29px;padding:6px 12px;color:var(--muted);font-size:11px}
 .schedule-compact-off small{font-size:11px}
+.schedule-compact-shift.is-selected-date,.schedule-compact-off.is-selected-date{background:rgba(108,176,142,.09);box-shadow:inset 3px 0 0 var(--mint)}
 .schedule-period-block{margin:12px 0 10px;padding:10px}
 .schedule-period-switch{margin-bottom:7px}
 .schedule-period-switch button{padding:7px 8px}
