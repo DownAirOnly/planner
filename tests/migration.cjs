@@ -1,7 +1,16 @@
 const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs');
 const source=fs.readFileSync('app.js','utf8').split('  let data, loadFailed=false;')[0]+' globalThis.test={normalize,defaults};})();';
 const context={document:{querySelector:()=>({})},window:{CommandSchedule:{validate:e=>e}},console};vm.createContext(context);vm.runInContext(source,context);
-const legacy=context.test.defaults();legacy.schemaVersion=4;legacy.events=[{id:'shift',date:'2026-11-07',breakMinutes:17,domain:'work',startTime:'09:00',endTime:'18:00'}];legacy.schedulePrefs={usualWorkdays:[5,6,0,1,2]};
+const legacy=context.test.defaults();legacy.schemaVersion=4;
+legacy.projects=[
+ {id:'p1',title:'Sample software project',category:'Software',status:'active',description:'',next:'',blocker:''},
+ {id:'p2',title:'Sample home project',category:'Home',status:'waiting',description:'',next:'',blocker:''}
+];
+legacy.tasks=[
+ {id:'t1',title:'Review sample task',projectId:'p1',status:'open',priority:'high',dueDate:'',notes:''},
+ {id:'t2',title:'Follow up later',projectId:'p2',status:'waiting',priority:'medium',dueDate:'',notes:''}
+];
+legacy.events=[{id:'shift',date:'2026-11-07',breakMinutes:17,domain:'work',startTime:'09:00',endTime:'18:00'}];legacy.schedulePrefs={usualWorkdays:[5,6,0,1,2]};
 const migrated=context.test.normalize(legacy);
 assert.equal(migrated.schemaVersion,5);assert.equal(migrated.projects.length,legacy.projects.length);assert.equal(migrated.tasks.length,legacy.tasks.length);assert.equal(migrated.projects[0].areaId,'apps');assert(migrated.tasks.every(t=>t.needsReview));assert.equal(JSON.stringify(migrated.events),JSON.stringify(legacy.events));assert.equal(JSON.stringify(migrated.schedulePrefs),JSON.stringify(legacy.schedulePrefs));
 migrated.projects[0].areaId='';migrated.projects[0].blocker='Private detail';migrated.projects[0].needsReview=false;migrated.tasks[0].kind='followup';migrated.tasks[0].needsReview=false;migrated.focus=[migrated.tasks[0].id];migrated.dismissed=[migrated.tasks[1].id];

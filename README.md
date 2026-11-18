@@ -1,5 +1,14 @@
 # Command
 
+## v42.2 — Sanity and recovery safeguards
+
+- A locally unreadable or checksum-mismatched Money ledger now shows the verified import preview and confirmation. Recovery can proceed without clearing browser data.
+- Before replacing an unreadable ledger via JSON or cloud restore, Command retains its exact original storage bytes in a separate local recovery slot. A previous verified recovery snapshot is not overwritten by a damaged record.
+- Successfully importing or restoring a verified Money copy clears the recovery warning. Replacements remain explicitly confirmed.
+- Repaired the legacy migration test fixture to use synthetic projects and tasks, instead of assuming empty app defaults contain records.
+- No Finance schema or task/schedule migration, and no modifications to existing user records.
+
+
 ## v42 — Tasks and Home integration
 
 - **Up next** shows explicitly pinned, still-open tasks in the chosen order. Waiting and blocked tasks remain visible if intentionally pinned; completed items stay out of Home and regain their prior position if reopened.
@@ -96,7 +105,7 @@ Personal dashboard with separate work, school, and personal calendars; projects,
 
 ## Important privacy and data notes
 
-Command uses browser localStorage **on this device only**. It does not have Firebase, account login, cloud backup, notifications, or cross-device sync yet. Clearing site data can erase your saved records. Use Settings → Export backup before significant changes. Import **replaces everything**, including calendar events.
+Command stores tasks, projects, ideas and schedules in browser localStorage, with optional Google sign-in and manually initiated account backup/restore. The Money ledger is stored separately and offers its own export, verified cloud backup and opt-in account sync. The bell displays in-app Inbox items; it is not a push-notification service. Clearing site data may erase records not safely backed up. Export both the Command backup and Money JSON before significant changes. Main-data imports replace the existing tasks/projects/schedules after confirmation. Money imports have additional conflict checks and recovery safeguards.
 
 The browser OCR uses **Tesseract.js v7** loaded from a CDN on demand and reads the image locally on the device. Language/worker assets are downloaded from external CDNs. The selected screenshots themselves are not uploaded to a Command server and are not stored after OCR. You can instead paste copied text to avoid using OCR. OCR may be slow and cannot reliably interpret every screenshot layout; always review imported events.
 
