@@ -341,6 +341,9 @@ function eventForm(item={}){
     '<div class="field"><label for="schedule-image-input">Schedule screenshot</label><input type="file" id="schedule-image-input" accept="image/*" multiple></div>'+
     (domain==="work"?'<div class="schedule-workweek-import"><span>Screenshot imports only use dates and times visible in the image.</span></div>':"")+
     '<p id="schedule-ocr-status" class="schedule-hint" role="status">Choose a screenshot. Command will propose shifts for you to review.</p>'+
+    '<details class="schedule-import-diagnostics" id="schedule-diagnostics" hidden><summary>What did Command read?</summary>'+
+    '<pre id="schedule-diagnostics-text"></pre><button type="button" class="button secondary" data-action="schedule-copy-diagnostics">Copy diagnostics</button>'+
+    '<p class="schedule-hint">Counts only. No screenshot images or full OCR text are included.</p></details>'+
     '<div id="schedule-import-results" class="schedule-import-results"></div>'+
     '<details class="schedule-import-advanced"><summary>Other import options</summary><div class="schedule-import-advanced-content">'+
       '<div class="field"><label for="schedule-month">Schedule month</label><input id="schedule-month" type="month" value="'+esc(ui.selected.slice(0,7))+'"></div>'+
@@ -376,7 +379,7 @@ function eventForm(item={}){
       const detailHtml=(row.domain==="work"?workFields(row,i):
         '<div class="field"><label>Location</label><input name="location-'+i+'" value="'+esc(row.location)+'"></div>');
       return '<div class="schedule-proposed-row" data-review-row="'+i+'">'+
-        '<div class="schedule-proposed-top"><label class="schedule-proposed-check"><input type="checkbox" name="include-'+i+'" '+(duplicate||row._include===false||needsEdit?"":"checked")+' aria-label="Include shift '+(i+1)+'">'+
+        '<div class="schedule-proposed-top"><label class="schedule-proposed-check"><input type="checkbox" name="include-'+i+'" '+(duplicate||row._include===false||needsEdit?"":"checked")+(needsEdit?" disabled":"")+' aria-label="Include shift '+(i+1)+'">'+
           '<span class="schedule-proposed-main"><strong>'+esc(row.date?labelDate(row.date):"Date needed")+'</strong>'+
             '<span>'+esc(status)+'</span>'+
             '<small class="schedule-import-hours">'+esc(hours)+'</small>'+
@@ -405,7 +408,7 @@ function eventForm(item={}){
   if(!draft||!form)return;
   const v=new FormData(form);
   draft.rows=draft.rows.map((row,i)=>({...row,
-    date:parseIso(v.get("date-"+i))||row.date,
+    date:parseIso(v.get("date-"+i))||"",
     title:String(v.get("title-"+i)||row.title).trim(),
     startTime:String(v.get("start-"+i)||""),
     endTime:String(v.get("end-"+i)||""),
@@ -494,14 +497,15 @@ function eventForm(item={}){
     raw=document.querySelector("#schedule-raw-text");
   const files=Array.from(input?.files||[]).filter(f=>f.type.startsWith("image/")).slice(0,5);
   if(!files.length){toast("Choose a screenshot first");return;}
-  if(!status||!raw)return;
+  if(!status||!raw||ui.ocrBusy)return;
+  ui.ocrBusy=true;
   const button=document.querySelector('[data-action="schedule-ocr"]');
   if(button)button.disabled=true;
   let worker;
   try{
    status.textContent="Loading text reader…";await loadTesseract();
    worker=await window.Tesseract.createWorker("eng");
-   const texts=[],detected=[],undated=[];
+   const texts=[],detected=[],undated=[],diagnostics=[];
    const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
    const domain=document.querySelector("#import-domain")?.value||"work";
    const parser=window.CommandImportParser;
@@ -516,35 +520,63 @@ function eventForm(item={}){
     const primary=await worker.recognize(files[i],{}, {text:true,tsv:true});
     const original=primary.data?.text||"";
     texts.push(original);
-    const visibleTimes=parser.timeOnlyRows(original,domain);
-    const readings=extract(primary);
-    let dated=reconcile(readings);
-    if(dated.length<visibleTimes.length||dated.length<2){
-      status.textContent="Rechecking unclear rows on screenshot "+(i+1)+"…";
+    const primaryTimes=parser.timeOnlyRows(original,domain);
+    // The strongest OCR pass determines the expected time count for each
+    // time range. Never sum passes; they describe the SAME image.
+    const bestTimes=new Map();
+    const collectTimes=result=>{
+      const perPass=new Map();
+      for(const item of parser.timeOnlyRows(result?.data?.text||"",domain)){
+        const key=item.startTime+"|"+item.endTime;
+        if(!perPass.has(key))perPass.set(key,[]);
+        perPass.get(key).push(item);
+      }
+      for(const [key,list] of perPass)if(list.length>(bestTimes.get(key)?.length||0))bestTimes.set(key,list);
+    };
+    collectTimes(primary);
+    const candidates=extract(primary);
+    const initial=reconcile(candidates);
+    let dated=initial,enhancedRun=false,topRun=false;
+    // A screenshot can have several genuine shifts even if the first pass
+    // recognizes only two times. Recheck short calendars unconditionally.
+    if(initial.length<4||initial.length<primaryTimes.length){
+      status.textContent="Checking calendar dates on screenshot "+(i+1)+"…";
       const enhanced=await enhancedScreenshot(files[i],worker);
       if(enhanced){
-       readings.push(...extract(enhanced));
-       texts.push(enhanced.data?.text||"");
-       dated=reconcile(readings);
+        enhancedRun=true;candidates.push(...extract(enhanced));
+        collectTimes(enhanced);
+        texts.push(enhanced.data?.text||"");
+        dated=reconcile(candidates);
       }
-      if(i===0&&dated.length<visibleTimes.length){
-       const top=await inspectTopOfScreenshot(files[i],worker);
-       if(top){readings.push(...extract(top));texts.push(top.data?.text||"");dated=reconcile(readings);}
+    }
+    let visible=[...bestTimes.values()].flat();
+    if(dated.length<visible.length){
+      // Check the top of EVERY image, not just the first one.
+      const top=await inspectTopOfScreenshot(files[i],worker);
+      if(top){
+        topRun=true;candidates.push(...extract(top));
+        collectTimes(top);texts.push(top.data?.text||"");
+        dated=reconcile(candidates);
+        visible=[...bestTimes.values()].flat();
       }
     }
     detected.push(...dated);
-    // Retain every extra time that couldn't be attached to an observed date.
-    // Count repeated identical hours independently: they can be real shifts.
-    const counts=new Map();
-    for(const row of dated){
-      const key=row.startTime+"|"+row.endTime;
-      counts.set(key,(counts.get(key)||0)+1);
+    const accounted=new Map();
+    for(const item of dated){
+      const key=item.startTime+"|"+item.endTime;
+      accounted.set(key,(accounted.get(key)||0)+1);
     }
-    for(const candidate of visibleTimes){
-      const key=candidate.startTime+"|"+candidate.endTime,n=counts.get(key)||0;
-      if(n>0){counts.set(key,n-1);continue;}
-      undated.push(candidate); // no date, unchecked by default
+    let missing=0;
+    for(const item of visible){
+      const key=item.startTime+"|"+item.endTime,count=accounted.get(key)||0;
+      if(count>0){accounted.set(key,count-1);continue;}
+      undated.push(item);missing++;
     }
+    diagnostics.push({
+      image:i+1,primaryTimes:primaryTimes.length,firstDated:initial.length,
+      enhanced:enhancedRun,top:topRun,visibleTimes:visible.length,
+      dated:dated.length,dateNeeded:missing,reviewOnly:dated.filter(row=>row._include===false).length
+    });
    }
    const draft=ui.workingImport;
    if(!draft)return;
@@ -554,12 +586,31 @@ function eventForm(item={}){
    draft.ocrRows=reconcile(detected);
    draft.rows=[...draft.ocrRows,...undated];
    draft.openReviewId=undefined;
+   const report=["Command v39 schedule OCR diagnostics",
+     "Selected month: "+yr+"-"+String(mo).padStart(2,"0"),
+     "Images: "+files.length,
+     ...diagnostics.map(x=>"Image "+x.image+": first pass "+x.primaryTimes+" times / "+x.firstDated+
+       " dated; enhanced "+(x.enhanced?"yes":"unavailable")+
+       "; top crop "+(x.top?"yes":"not needed")+
+       "; strongest read "+x.visibleTimes+" times, "+x.dated+" dated, "+x.dateNeeded+
+       " need dates, "+x.reviewOnly+" need confirmation"),
+     "Combined: "+draft.ocrRows.length+" dated, "+undated.length+" without dates.",
+     "No screenshot, raw OCR text or personal shift details included."].join("\n");
+   draft.ocrDiagnostics=report;
+   const details=document.querySelector("#schedule-diagnostics");
+   if(details)details.hidden=false;
+   const reportBox=document.querySelector("#schedule-diagnostics-text");
+   if(reportBox)reportBox.textContent=report;
    sortedDraft(draft.rows);importPreview();
    status.textContent=draft.ocrRows.length+" dated shift"+(draft.ocrRows.length===1?"":"s")+" found"+
-    (undated.length?"; "+undated.length+" time"+(undated.length===1?"":"s")+" need dates.":".")+
-    " Compare against your source before saving.";
+     (undated.length?"; "+undated.length+" time"+(undated.length===1?"":"s")+" need dates.":".")+
+     " Review against the screenshots before saving.";
   }catch(error){status.textContent=error.message||"Could not read the screenshot. Try Live Text from Photos.";}
-  finally{if(worker)try{await worker.terminate();}catch(e){}if(button)button.disabled=false;}
+  finally{
+    if(worker)try{await worker.terminate();}catch(e){}
+    if(button)button.disabled=false;
+    ui.ocrBusy=false;
+  }
  }
  function handleAction(b){
   const action=b.dataset.action;
@@ -576,6 +627,14 @@ function eventForm(item={}){
   if(action==="schedule-delete"){if(confirm("Delete this event"+(events().find(x=>x.id===b.dataset.id)?.repeat==="weekly"?" and all its repeats":"")+"?")){updateEvents(events().filter(e=>e.id!==b.dataset.id));closeSheet();toast("Event deleted");}}
   if(action==="schedule-import"){importForm();}
   if(action==="schedule-ocr"){readScreenshots();}
+  if(action==="schedule-copy-diagnostics"){
+    const report=ui.workingImport?.ocrDiagnostics||"No OCR diagnostics yet.";
+    if(navigator.clipboard?.writeText){
+      navigator.clipboard.writeText(report).then(()=>toast("OCR diagnostics copied"))
+        .catch(()=>prompt("Copy diagnostics:",report));
+    }else prompt("Copy diagnostics:",report);
+    return true;
+  }
   if(action==="schedule-workweek"){workweekForm();}
   if(action==="schedule-review-toggle"){toggleRow(+b.dataset.index);return true;}
    if(action==="schedule-review-done"){toggleRow(+b.dataset.index,true);return true;}
