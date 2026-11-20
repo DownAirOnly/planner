@@ -142,8 +142,10 @@ async function read(file,worker,year,month,domain,onProgress=()=>{}){
    const cardCanvas=crop(canvas,left,cardStart,right-left,cardEnd-cardStart);
    const cardResult=await worker.recognize(cardCanvas,{}, {text:true});
    const description=cardResult?.data?.text||"";
-   const gutterTop=Math.max(Math.round(h*.18),card.top-Math.round(w*.27));
-   const gutterBottom=Math.min(h,card.top+Math.round(w*.10));
+   // Date labels align with the top of their own card. Excluding the
+   // previous card's label prevents attaching a shift to the wrong day.
+   const gutterTop=Math.max(Math.round(h*.18),card.top-Math.round(w*.09));
+   const gutterBottom=Math.min(h,card.top+Math.round(w*.19));
    const gutterCanvas=crop(canvas,Math.round(w*.075),gutterTop,Math.round(w*.105),
      gutterBottom-gutterTop,3,true);
    const gutter=await worker.recognize(gutterCanvas,{}, {text:true});
