@@ -506,7 +506,7 @@ function eventForm(item={}){
   try{
    status.textContent="Loading text reader…";await loadTesseract();
    worker=await window.Tesseract.createWorker("eng");
-   const texts=[],detected=[],undated=[],diagnostics=[];
+   const texts=[],detected=[],undated=[],diagnostics=[],cardCaptures=[];
    const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
    const domain=document.querySelector("#import-domain")?.value||"work";
    const parser=window.CommandImportParser;
@@ -526,6 +526,7 @@ function eventForm(item={}){
         message=>{if(status)status.textContent="Image "+(i+1)+": "+message;});
     }catch(error){console.warn("Card-layout reader unavailable; trying generic OCR",error);}
     if(cards?.recognized){
+      cardCaptures.push(cards.rows);
       let dates=0,missing=0;
       for(const item of cards.rows){
         if(item.date&&item.startTime&&item.endTime){detected.push(item);dates++;}
@@ -602,7 +603,10 @@ function eventForm(item={}){
    draft.raw=texts.filter(Boolean).join("\n");
    raw.value=draft.raw;
    draft.ocrRows=reconcile(detected);
-   draft.rows=[...draft.ocrRows,...undated];
+   const cardRows=new Set(cardCaptures.flat());
+   const allowedUnknowns=parser.reduceOverlappingCardUnknowns(cardCaptures);
+   const unresolved=undated.filter(row=>!cardRows.has(row)||allowedUnknowns.has(row));
+   draft.rows=[...draft.ocrRows,...unresolved];
    draft.openReviewId=undefined;
    const report=["Command v40 schedule OCR diagnostics",
      "Selected month: "+yr+"-"+String(mo).padStart(2,"0"),
@@ -615,7 +619,8 @@ function eventForm(item={}){
        "; top crop "+(x.top?"yes":"not needed")+
        "; strongest read "+x.visibleTimes+" times, "+x.dated+" dated, "+x.dateNeeded+
        " need dates, "+x.reviewOnly+" need confirmation"),
-     "Combined: "+draft.ocrRows.length+" dated, "+undated.length+" without dates.",
+     "Combined: "+draft.ocrRows.length+" dated, "+unresolved.length+" without dates or times."+
+       (undated.length>unresolved.length?" Removed "+(undated.length-unresolved.length)+" overlapping OCR duplicates.":""),
      "No screenshot, raw OCR text or personal shift details included."].join("\n");
    draft.ocrDiagnostics=report;
    const details=document.querySelector("#schedule-diagnostics");
@@ -624,7 +629,7 @@ function eventForm(item={}){
    if(reportBox)reportBox.textContent=report;
    sortedDraft(draft.rows);importPreview();
    status.textContent=draft.ocrRows.length+" dated shift"+(draft.ocrRows.length===1?"":"s")+" found"+
-     (undated.length?"; "+undated.length+" time"+(undated.length===1?"":"s")+" need dates.":".")+
+     (unresolved.length?"; "+unresolved.length+" shift"+(unresolved.length===1?"":"s")+" need review.":".")+
      " Review against the screenshots before saving.";
   }catch(error){status.textContent=error.message||"Could not read the screenshot. Try Live Text from Photos.";}
   finally{

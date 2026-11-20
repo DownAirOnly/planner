@@ -11,6 +11,21 @@ function isoDate(year,month,day){
  if(d.getFullYear()!==year||d.getMonth()!==month-1||d.getDate()!==day)return "";
  return year+"-"+String(month).padStart(2,"0")+"-"+String(day).padStart(2,"0");
 }
+// Visible weeks can cross month boundaries (Mar 30–Apr 5).
+// Use only uniquely matching weekday/day labels near a boundary.
+function dateFromObservedWeekday(year,month,day,weekday){
+ const offsets=[0];
+ if(day<=7)offsets.push(1);
+ if(day>=24)offsets.push(-1);
+ const matches=[];
+ for(const offset of offsets){
+  const start=new Date(year,month-1+offset,1);
+  const date=isoDate(start.getFullYear(),start.getMonth()+1,day);
+  if(date&&dayNames[new Date(date+"T12:00:00").getDay()]===weekday)
+   matches.push({date,adjacentMonth:offset!==0});
+ }
+ return matches.length===1?matches[0]:null;
+}
 function observedDay(text,year,month){
  const lines=String(text||"").split(/\r?\n/).map(clean).filter(Boolean);
  const found=[];
@@ -28,10 +43,12 @@ function observedDay(text,year,month){
      value=token.replace("/","7");guessed=true;
    }
    if(!/^(?:[1-9]|[12]\d|3[01])$/.test(value))continue;
-   const date=isoDate(year,month,Number(value));
-   if(!date||dayNames[new Date(date+"T12:00:00").getDay()]!==wd)continue;
-   found.push({date,confidence:guessed?"medium":"high",
-     reason:guessed?"Date glyph may be 7 (read as /); confirm in screenshot":"Weekday and date visibly printed"});
+   const matched=dateFromObservedWeekday(year,month,Number(value),wd);
+   if(!matched)continue;
+   found.push({date:matched.date,confidence:guessed?"medium":"high",
+     reason:guessed?"Date glyph may be 7 (read as /); confirm in screenshot":
+       matched.adjacentMonth?"Weekday and day visibly match the neighboring month":
+       "Weekday and date visibly printed"});
    break;
   }
  }
@@ -49,7 +66,10 @@ function findCards(imageData,width,height){
   let hits=0;
   for(const x of points){
    const at=(y*width+x)*4,r=data[at],g=data[at+1],b=data[at+2];
-   if(r>=230&&r<=252&&g>=r+2&&b>=g+1&&b<=255)hits++;
+   const blue=r>=230&&r<=252&&g>=r+2&&b>=g+1&&b<=255;
+   // The selected day uses gray rather than the usual light-blue card.
+   const selectedGray=r>=208&&r<=236&&g>=r&&g-r<=7&&b>=g+1&&b-g<=9&&b<=245;
+   if(blue||selectedGray)hits++;
   }
   if(hits>=2){if(begin<0)begin=y;last=y;}
   else if(begin>=0&&y-last>gap){
@@ -109,7 +129,9 @@ async function read(file,worker,year,month,domain,onProgress=()=>{}){
   if(!blocks.length)return {recognized:false};
   // Only choose this specialized method when there are distinct blue cards
   // typical of the source schedule's UI. Never infer shifts from text alone.
-  const rows=[],stats={cards:blocks.length,dates:0,unconfirmed:0,missingTimes:0};
+  const rows=[],stats={cards:blocks.length,dates:0,unconfirmed:0,missingTimes:0,clipped:0};
+  const heights=blocks.map(c=>c.bottom-c.top).sort((a,b)=>a-b);
+  const typicalHeight=heights[Math.floor(heights.length/2)]||0;
   try{await worker.setParameters?.({tessedit_pageseg_mode:"6"});}catch{}
   for(let i=0;i<blocks.length;i++){
    const card=blocks[i],w=canvas.width,h=canvas.height;
@@ -120,13 +142,19 @@ async function read(file,worker,year,month,domain,onProgress=()=>{}){
    const cardCanvas=crop(canvas,left,cardStart,right-left,cardEnd-cardStart);
    const cardResult=await worker.recognize(cardCanvas,{}, {text:true});
    const description=cardResult?.data?.text||"";
-   const gutterTop=Math.max(Math.round(h*.18),card.top-Math.round(w*.27));
-   const gutterBottom=Math.min(h,card.top+Math.round(w*.10));
+   // Date labels align with the top of their own card. Excluding the
+   // previous card's label prevents attaching a shift to the wrong day.
+   const gutterTop=Math.max(Math.round(h*.18),card.top-Math.round(w*.09));
+   const gutterBottom=Math.min(h,card.top+Math.round(w*.19));
    const gutterCanvas=crop(canvas,Math.round(w*.075),gutterTop,Math.round(w*.105),
      gutterBottom-gutterTop,3,true);
    const gutter=await worker.recognize(gutterCanvas,{}, {text:true});
    const dateInfo=observedDay(gutter?.data?.text||"",year,month);
    const row=cardRow(description,dateInfo,domain,year,month);
+   // A partial card clipped by scrolling is not an additional shift.
+   // Keep full-size cards with missing time for explicit review.
+   if(!row.startTime&&!row.endTime&&typicalHeight>0&&
+      card.bottom-card.top<typicalHeight*.55){stats.clipped++;continue;}
    row._ocrCardIndex=i+1;
    rows.push(row);
    if(dateInfo)stats.dates++;

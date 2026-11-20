@@ -1,5 +1,17 @@
 # Command
 
+## v42.3 — UKG work-schedule screenshot import
+
+- Recognizes both pale-blue shift cards and the darker gray selected-day card, so a selected shift is no longer omitted just because the card has a different background.
+- Uses a printed weekday/day label to resolve dates in the adjacent month when the visible schedule week crosses a month or year boundary; ambiguous pairs are not guessed.
+- Reads a narrower date gutter near each card to avoid incorrectly attaching a previous card's weekday.
+- Skips obviously clipped, time-free card fragments while retaining genuine full-card OCR failures for explicit review.
+- Suppresses repeat undated attempts across overlapping screenshots only when they share confirmed shifts within one seven-day period; preserves multiple legitimate shifts with the same hours.
+- Recognizes Rescue as a work assignment area.
+- Includes synthetic OCR regression checks; no employee schedule screenshots or personal schedules are stored in the public repository.
+- No calendar-event migration or changes to saved shift records. All detected entries remain reviewable before import.
+
+
 ## v42.2 — Sanity and recovery safeguards
 
 - A locally unreadable or checksum-mismatched Money ledger now shows the verified import preview and confirmation. Recovery can proceed without clearing browser data.

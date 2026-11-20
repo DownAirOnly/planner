@@ -58,11 +58,26 @@ function weekdayOnly(line){
 function weekdayMatches(label,date){
  return !label||WEEKDAYS[new Date(date+"T12:00:00").getDay()]===label.toLowerCase().slice(0,3);
 }
-function labeledDay(line,ctx){
+// A week in the selected month may contain dates in the previous/next one.
+// Require a visible weekday and an unambiguous match when crossing months.
+function observedWeekdayDate(ctx,day,label){
+ if(!label)return "";
+ const offsets=[0];
+ if(day<=7)offsets.push(1);
+ if(day>=24)offsets.push(-1);
+ const matches=[];
+ for(const offset of offsets){
+  const anchor=new Date(ctx.year,ctx.month-1+offset,1);
+  const date=dateIso(anchor.getFullYear(),anchor.getMonth()+1,day);
+  if(date&&weekdayMatches(label,date))matches.push(date);
+ }
+ return matches.length===1?matches[0]:"";
+}
+function labeledDay(line,ctx,nearbyWeekday=""){
  const candidate=dayFromPrefix(line);
  if(!candidate)return "";
- const date=dateIso(ctx.year,ctx.month,candidate.day);
- return date&&weekdayMatches(candidate.weekday,date)?date:"";
+ const label=candidate.weekday||nearbyWeekday;
+ return label?observedWeekdayDate(ctx,candidate.day,label):dateIso(ctx.year,ctx.month,candidate.day);
 }
 function rowEvidence(prefix,lines,index,ctx){
  const confidence=ctx.fromHeader?"high":"medium";
@@ -82,9 +97,9 @@ function rowEvidence(prefix,lines,index,ctx){
      continue;
    }
    const fullDate=explicitDate(line,ctx);
-   const date=fullDate&&line.length<42?fullDate:labeledDay(line,ctx);
+   const precedingWeekday=weekdayOnly(lines[i-1]||"");
+   const date=fullDate&&line.length<42?fullDate:labeledDay(line,ctx,laterWeekday||precedingWeekday);
    if(date){
-     const precedingWeekday=weekdayOnly(lines[i-1]||"");
      if(!weekdayMatches(laterWeekday,date)||!weekdayMatches(precedingWeekday,date))break;
      return {date,confidence:fullDate?"high":confidence,reason:fullDate?"Explicit date beside shift":reason};
    }
@@ -103,6 +118,7 @@ function locationFrom(text,domain){
   const s=clean(text).replace(/\s*\/\s*/g,"/");
   if(/\b(?:WW\s*o\s*HP|Wizarding\s+World(?:\s+of\s+Harry\s+Potter)?|Hogsmeade(?:\s+Village)?)\b/i.test(s))return "Hogsmeade Village";
   if(/\bIOA\s*\/\s*Lost\b|\bLost\s+Continent\b/i.test(s))return "Lost Continent";
+  if(/\bIOA\s*\/\s*Rescue\b|\bRescue\b/i.test(s))return "Rescue";
   if(/\bMarvel\b/i.test(s))return "Marvel";
   if(/\bPort of Entry\b/i.test(s))return "Port of Entry";
   if(/\bUSF\s*\/\s*London\b/i.test(s))return "London";
@@ -276,7 +292,7 @@ function parseTextV38(raw,domain,year,month){
    if(weekday){weekdayLabel=weekday;current="";continue;}
    const direct=dayFromPrefix(line);
    const explicit=explicitDate(line,ctx);
-   let date=direct?labeledDay(line,ctx):(!isCalendarHeading(line)&&line.length<43?explicit:"");
+   let date=direct?labeledDay(line,ctx,weekdayLabel):(!isCalendarHeading(line)&&line.length<43?explicit:"");
    if(date&&weekdayMatches(weekdayLabel,date)){
     const observedWeekday=!!weekdayLabel||!!direct?.weekday;
     current=date;confidence=!!explicit||(observedWeekday&&ctx.fromHeader)?"high":"medium";weekdayLabel="";
@@ -318,7 +334,14 @@ function parseTsvV38(tsv,raw,domain,year,month){
  const timed=lines.map(l=>({...l,text:[...l.words].sort((a,b)=>a.left-b.left).map(w=>w.text).join(" ")}))
   .map(l=>({...l,time:timeRange(l.text)})).filter(l=>l.time);
  const numerals=words.filter(w=>w.left<maxX*.27&&/^([1-9]|[12]\d|3[01])[,.]?$/.test(w.text))
-  .map(w=>({word:w,date:dateIso(ctx.year,ctx.month,parseInt(w.text,10))})).filter(v=>v.date);
+  .map(word=>{
+   const day=parseInt(word.text,10);
+   const nearby=words.filter(w=>w!==word&&w.left<maxX*.27&&weekdayOnly(w.text)&&
+     w.center<=word.center+30&&word.center-w.center<Math.max(120,median*8));
+   const observed=nearby.map(w=>observedWeekdayDate(ctx,day,weekdayOnly(w.text))).filter(Boolean);
+   const date=observed.length===1?observed[0]:nearby.length?"":dateIso(ctx.year,ctx.month,day);
+   return {word,date};
+  }).filter(v=>v.date);
  const result=[],used=new Set(),maxRange=Math.max(60,Math.min(115,median*5.5));
  for(const line of timed){
   const cardTokens=line.words.filter(w=>w.left>maxX*.17&&/\d|(?:AM|PM)/i.test(w.text));
@@ -364,5 +387,52 @@ function timeOnlyRows(raw,domain){
  return out;
 }
 
-window.CommandImportParser={parseText:parseTextV38,parseTsv:parseTsvV38,timeOnlyRows,countRanges,context,timeRange,proposeClippedPrevious,reconcileRows};
+// A user may import two overlapping scrolled views of the same week.
+// Only coalesce undated card attempts when screenshots share a confirmed
+// dated shift AND all confirmed dates fit within one seven-day period.
+// Retain the maximum count of distinct same-time cards visible in any
+// single image, so genuine Fri/Sat shifts with matching hours survive.
+function reduceOverlappingCardUnknowns(captures){
+ const kept=new Set();
+ const known=row=>!!(row?.date&&row.startTime&&row.endTime&&
+   row.dateConfidence==="high"&&!row.estimatedDate);
+ const dateKey=r=>[r.domain,r.date,r.startTime,r.endTime].join("|");
+ const timeKey=r=>r?.startTime&&r?.endTime?[r.domain,r.startTime,r.endTime].join("|"):"";
+ const lists=(captures||[]).filter(x=>Array.isArray(x)&&x.length);
+ for(const list of lists)for(const row of list)if(!known(row))kept.add(row);
+ if(lists.length<2)return kept;
+ const keys=lists.map(list=>new Set(list.filter(known).map(dateKey)));
+ const visited=new Set();
+ for(let i=0;i<lists.length;i++){
+  if(visited.has(i))continue;
+  const group=[i];visited.add(i);
+  for(let k=0;k<group.length;k++){
+   const a=group[k];
+   for(let j=0;j<lists.length;j++){
+    if(visited.has(j)||![...keys[a]].some(key=>keys[j].has(key)))continue;
+    visited.add(j);group.push(j);
+   }
+  }
+  if(group.length<2)continue;
+  const dated=group.flatMap(ix=>lists[ix].filter(known));
+  const dates=[...new Set(dated.map(r=>r.date))].sort();
+  if(!dates.length)continue;
+  const span=(new Date(dates[dates.length-1]+"T12:00:00")-
+    new Date(dates[0]+"T12:00:00"))/86400000;
+  if(span>6)continue; // Not provably a single overlapping week.
+  const signatures=new Set(group.flatMap(ix=>lists[ix].map(timeKey)).filter(Boolean));
+  for(const signature of signatures){
+   const confirmed=new Set(dated.filter(r=>timeKey(r)===signature).map(dateKey));
+   const observedMax=Math.max(...group.map(ix=>lists[ix].filter(r=>timeKey(r)===signature).length));
+   const required=Math.max(0,observedMax-confirmed.size);
+   const pending=group.flatMap(ix=>lists[ix].filter(r=>!known(r)&&timeKey(r)===signature));
+   // Prefer richer OCR records if one undated row must be retained.
+   pending.sort((a,b)=>Number(!!b.location)+Number(!!b.assignment)-Number(!!a.location)-Number(!!a.assignment));
+   for(const row of pending.slice(required))kept.delete(row);
+  }
+ }
+ return kept;
+}
+
+window.CommandImportParser={parseText:parseTextV38,parseTsv:parseTsvV38,timeOnlyRows,countRanges,context,timeRange,proposeClippedPrevious,reconcileRows,reduceOverlappingCardUnknowns};
 })();
