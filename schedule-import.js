@@ -387,5 +387,52 @@ function timeOnlyRows(raw,domain){
  return out;
 }
 
-window.CommandImportParser={parseText:parseTextV38,parseTsv:parseTsvV38,timeOnlyRows,countRanges,context,timeRange,proposeClippedPrevious,reconcileRows};
+// A user may import two overlapping scrolled views of the same week.
+// Only coalesce undated card attempts when screenshots share a confirmed
+// dated shift AND all confirmed dates fit within one seven-day period.
+// Retain the maximum count of distinct same-time cards visible in any
+// single image, so genuine Fri/Sat shifts with matching hours survive.
+function reduceOverlappingCardUnknowns(captures){
+ const kept=new Set();
+ const known=row=>!!(row?.date&&row.startTime&&row.endTime&&
+   row.dateConfidence==="high"&&!row.estimatedDate);
+ const dateKey=r=>[r.domain,r.date,r.startTime,r.endTime].join("|");
+ const timeKey=r=>r?.startTime&&r?.endTime?[r.domain,r.startTime,r.endTime].join("|"):"";
+ const lists=(captures||[]).filter(x=>Array.isArray(x)&&x.length);
+ for(const list of lists)for(const row of list)if(!known(row))kept.add(row);
+ if(lists.length<2)return kept;
+ const keys=lists.map(list=>new Set(list.filter(known).map(dateKey)));
+ const visited=new Set();
+ for(let i=0;i<lists.length;i++){
+  if(visited.has(i))continue;
+  const group=[i];visited.add(i);
+  for(let k=0;k<group.length;k++){
+   const a=group[k];
+   for(let j=0;j<lists.length;j++){
+    if(visited.has(j)||![...keys[a]].some(key=>keys[j].has(key)))continue;
+    visited.add(j);group.push(j);
+   }
+  }
+  if(group.length<2)continue;
+  const dated=group.flatMap(ix=>lists[ix].filter(known));
+  const dates=[...new Set(dated.map(r=>r.date))].sort();
+  if(!dates.length)continue;
+  const span=(new Date(dates[dates.length-1]+"T12:00:00")-
+    new Date(dates[0]+"T12:00:00"))/86400000;
+  if(span>6)continue; // Not provably a single overlapping week.
+  const signatures=new Set(group.flatMap(ix=>lists[ix].map(timeKey)).filter(Boolean));
+  for(const signature of signatures){
+   const confirmed=new Set(dated.filter(r=>timeKey(r)===signature).map(dateKey));
+   const observedMax=Math.max(...group.map(ix=>lists[ix].filter(r=>timeKey(r)===signature).length));
+   const required=Math.max(0,observedMax-confirmed.size);
+   const pending=group.flatMap(ix=>lists[ix].filter(r=>!known(r)&&timeKey(r)===signature));
+   // Prefer richer OCR records if one undated row must be retained.
+   pending.sort((a,b)=>Number(!!b.location)+Number(!!b.assignment)-Number(!!a.location)-Number(!!a.assignment));
+   for(const row of pending.slice(required))kept.delete(row);
+  }
+ }
+ return kept;
+}
+
+window.CommandImportParser={parseText:parseTextV38,parseTsv:parseTsvV38,timeOnlyRows,countRanges,context,timeRange,proposeClippedPrevious,reconcileRows,reduceOverlappingCardUnknowns};
 })();
