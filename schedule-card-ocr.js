@@ -11,7 +11,7 @@ function isoDate(year,month,day){
  if(d.getFullYear()!==year||d.getMonth()!==month-1||d.getDate()!==day)return "";
  return year+"-"+String(month).padStart(2,"0")+"-"+String(day).padStart(2,"0");
 }
-// Visible weeks can cross month boundaries (Nov 29–Dec 5).
+// Visible weeks can cross month boundaries (Mar 30–Apr 5).
 // Use only uniquely matching weekday/day labels near a boundary.
 function dateFromObservedWeekday(year,month,day,weekday){
  const offsets=[0];
