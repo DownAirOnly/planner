@@ -506,14 +506,14 @@ function eventForm(item={}){
   try{
    status.textContent="Loading text reader…";await loadTesseract();
    worker=await window.Tesseract.createWorker("eng");
-   const texts=[],detected=[],undated=[],diagnostics=[],cardCaptures=[];
+   const texts=[],detected=[],undated=[],diagnostics=[],cardCaptures=[],sourceContexts=[],observedTimes=[];
    const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
    const domain=document.querySelector("#import-domain")?.value||"work";
    const parser=window.CommandImportParser;
-   const extract=result=>{
+   const extract=(result,sourceYear=yr,sourceMonth=mo)=>{
     const text=result?.data?.text||"";
-    return [...parser.parseText(text,domain,yr,mo),
-      ...parser.parseTsv(result?.data?.tsv||"",text,domain,yr,mo)];
+    return [...parser.parseText(text,domain,sourceYear,sourceMonth),
+      ...parser.parseTsv(result?.data?.tsv||"",text,domain,sourceYear,sourceMonth)];
    };
    const reconcile=rows=>parser.reconcileRows(rows,domain,usualWorkdays());
    for(let i=0;i<files.length;i++){
@@ -525,8 +525,11 @@ function eventForm(item={}){
       cards=await window.CommandScheduleCardOCR?.read(files[i],worker,yr,mo,domain,
         message=>{if(status)status.textContent="Image "+(i+1)+": "+message;});
     }catch(error){console.warn("Card-layout reader unavailable; trying generic OCR",error);}
+    const fileYear=cards?.header?.year||yr,fileMonth=cards?.header?.month||mo;
+    sourceContexts.push(cards?.header||{year:yr,month:mo,fromHeader:false,weekStart:""});
     if(cards?.recognized){
       cardCaptures.push(cards.rows);
+      for(const row of cards.rows)row._ocrImageIndex=i;
       let dates=0,missing=0;
       for(const item of cards.rows){
         if(item._omitFromReview){missing++;continue;}
@@ -561,7 +564,7 @@ function eventForm(item={}){
       for(const [key,list] of perPass)if(list.length>(bestTimes.get(key)?.length||0))bestTimes.set(key,list);
     };
     collectTimes(primary);
-    const candidates=extract(primary);
+    const candidates=extract(primary,fileYear,fileMonth);
     const initial=reconcile(candidates);
     let dated=initial,enhancedRun=false,topRun=false;
     // A screenshot can have several genuine shifts even if the first pass
@@ -570,7 +573,7 @@ function eventForm(item={}){
       status.textContent="Checking calendar dates on screenshot "+(i+1)+"…";
       const enhanced=await enhancedScreenshot(files[i],worker);
       if(enhanced){
-        enhancedRun=true;candidates.push(...extract(enhanced));
+        enhancedRun=true;candidates.push(...extract(enhanced,fileYear,fileMonth));
         collectTimes(enhanced);
         texts.push(enhanced.data?.text||"");
         dated=reconcile(candidates);
@@ -581,7 +584,7 @@ function eventForm(item={}){
       // Check the top of EVERY image, not just the first one.
       const top=await inspectTopOfScreenshot(files[i],worker);
       if(top){
-        topRun=true;candidates.push(...extract(top));
+        topRun=true;candidates.push(...extract(top,fileYear,fileMonth));
         collectTimes(top);texts.push(top.data?.text||"");
         dated=reconcile(candidates);
         visible=[...bestTimes.values()].flat();
@@ -613,9 +616,11 @@ function eventForm(item={}){
       knownCounts.set(key,(knownCounts.get(key)||0)+1);
     }
     let missing=0;
+    const perImageTimes=new Map();
     const timeKeys=new Set([...bestTimes.keys(),...cardTimes.keys()]);
     for(const key of timeKeys){
       const observed=Math.max(bestTimes.get(key)?.length||0,cardTimes.get(key)?.length||0);
+      perImageTimes.set(key,observed);
       const needed=Math.max(0,observed-(knownCounts.get(key)||0));
       if(!needed)continue;
       const options=[
@@ -624,6 +629,7 @@ function eventForm(item={}){
       ];
       for(const row of options.slice(0,needed)){undated.push(row);missing++;}
     }
+    observedTimes.push(perImageTimes);
     const cardDiagnostic=diagnostics.find(x=>x.image===i+1&&x.method==="cards");
     if(cardDiagnostic){
       cardDiagnostic.fallback=true;
@@ -642,7 +648,9 @@ function eventForm(item={}){
    draft.domain=domain;
    draft.raw=texts.filter(Boolean).join("\n");
    raw.value=draft.raw;
-   const checked=parser.verifyNeighboringMonth(detected,yr,mo);
+   parser.stabilizeCardWeeks(cardCaptures);
+   const selected=sourceContexts.find(h=>h.fromHeader)||{year:yr,month:mo};
+   const checked=parser.verifyNeighboringMonth(detected,selected.year,selected.month);
    draft.ocrRows=reconcile(checked.accepted);
    const cardRows=new Set(cardCaptures.flat());
    const allowedUnknowns=parser.reduceOverlappingCardUnknowns(cardCaptures);
