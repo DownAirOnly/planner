@@ -1,5 +1,16 @@
 # Command
 
+## v42.5 — Screenshot-anchored schedule import
+
+- Read the month and, when visible, the exact Sunday–Saturday week from the source screenshot before interpreting shift cards. The month picker is now only a fallback if the screenshot header is unreadable.
+- Resolve each card's printed weekday against the observed week; a truncated `Tue 8` or `Fri 11` digit can no longer create `Tue, Nov 3` or `Fri, Jan 1` when the screenshot visibly says December 6–12.
+- When the week heading is outside a scrolled screenshot, allow at least two distinct confirmed dates in that image to anchor a card's weekday, but only between those observed cards—not below a later calendar section.
+- Recognize weekday and day printed on the same OCR line as well as separate lines.
+- Use screenshot month from full-image OCR if the focused header crop fails, and avoid interpreting a later section's week heading as applying to earlier visible cards.
+- Remove repeated undated time-only suggestions across demonstrably overlapping screenshots, while retaining genuine same-time shifts on different dates.
+- Keep user review before saving; do not alter any existing saved shifts or personal data. Added synthetic regression cases for wrong month selection and week-based corrections.
+
+
 ## v42.4 — Schedule import resilience
 
 - Card detection is no longer treated as successful OCR by itself. If any visible card lacks a verified date or readable time, Command performs a full-screenshot fallback.
