@@ -648,7 +648,7 @@ function eventForm(item={}){
    draft.domain=domain;
    draft.raw=texts.filter(Boolean).join("\n");
    raw.value=draft.raw;
-   parser.stabilizeCardWeeks(cardCaptures);
+   for(const row of parser.stabilizeCardWeeks(cardCaptures))if(!detected.includes(row))detected.push(row);
    const selected=sourceContexts.find(h=>h.fromHeader)||{year:yr,month:mo};
    const checked=parser.verifyNeighboringMonth(detected,selected.year,selected.month);
    draft.ocrRows=reconcile(checked.accepted);
@@ -656,8 +656,31 @@ function eventForm(item={}){
    const allowedUnknowns=parser.reduceOverlappingCardUnknowns(cardCaptures);
    // No blank time-less proposals: they cannot be saved and don't help the
    // user. Keep only recognized time ranges that actually need date review.
-   const unresolved=[...undated,...checked.rejected].filter(row=>
+   let unresolved=[...undated,...checked.rejected].filter(row=>
       row.startTime&&row.endTime&&(!cardRows.has(row)||allowedUnknowns.has(row)));
+   // Both screenshots can contain the same time-only fallback. Only collapse
+   // these when they have an independently confirmed overlapping shift.
+   const overlap=cardCaptures.some((a,i)=>cardCaptures.some((b,j)=>j>i&&
+      a.some(x=>x.date&&b.some(y=>y.date===x.date&&y.startTime===x.startTime&&y.endTime===x.endTime))));
+   if(overlap){
+     const maxObserved=new Map();
+     for(const counts of observedTimes)for(const [key,n] of counts)
+       maxObserved.set(key,Math.max(maxObserved.get(key)||0,n));
+     const knownByTime=new Map();
+     for(const row of draft.ocrRows){
+       const key=row.startTime+"|"+row.endTime;
+       knownByTime.set(key,(knownByTime.get(key)||0)+1);
+     }
+     const remaining=new Map();
+     unresolved=unresolved.filter(row=>{
+       const key=row.startTime+"|"+row.endTime;
+       if(!remaining.has(key))
+         remaining.set(key,Math.max(0,(maxObserved.get(key)||0)-(knownByTime.get(key)||0)));
+       if(remaining.get(key)<=0)return false;
+       remaining.set(key,remaining.get(key)-1);
+       return true;
+     });
+   }
    draft.rows=[...draft.ocrRows,...unresolved];
    const unreadableCards=diagnostics.filter(d=>d.method==="cards")
      .reduce((sum,d)=>sum+(d.unreadable||0),0);
