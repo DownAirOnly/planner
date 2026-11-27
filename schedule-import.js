@@ -461,7 +461,13 @@ function verifyNeighboringMonth(rows,year,month){
  const accepted=(rows||[]).map(row=>{
   if(!row.date||row.date.startsWith(prefix))return row;
   const week=sunday(row.date);
-  if(weeks.has(week)||(external.get(week)?.size||0)>=2)return row;
+  if(weeks.has(week)||(external.get(week)?.size||0)>=2){
+   // The printed neighboring-month day now belongs to a confirmed week.
+   if(row.dateConfidence==="medium"&&/neighboring month/i.test(row.confidenceReason||""))
+    return {...row,dateConfidence:"high",confidenceReason:"Date corroborated by this schedule week",
+      estimatedDate:false,_include:!!row.startTime&&!!row.endTime};
+   return row;
+  }
   // A single adjacent-month guess must never be silently saved.
   // Keep any recognized times available for explicit review.
   const review={...row,date:"",dateConfidence:"low",estimatedDate:true,_include:false,
