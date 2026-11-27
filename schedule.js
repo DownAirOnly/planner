@@ -531,7 +531,7 @@ function eventForm(item={}){
       for(const item of cards.rows){
         if(item._omitFromReview){missing++;continue;}
         if(item.date&&item.startTime&&item.endTime){detected.push(item);dates++;}
-        else if(item.startTime&&item.endTime){undated.push(item);missing++;}
+        else if(item.startTime&&item.endTime){missing++;}
       }
       diagnostics.push({image:i+1,method:"cards",cards:cards.rows.length,
         dated:dates,dateNeeded:missing,reviewOnly:cards.rows.filter(r=>r._include===false).length});
@@ -588,25 +588,41 @@ function eventForm(item={}){
       }
     }
     detected.push(...dated);
-    const accounted=new Map();
-    for(const item of [...dated,...(cards?.rows||[]).filter(r=>r.date&&r.startTime&&r.endTime)]){
-      const key=item.startTime+"|"+item.endTime;
-      // Distinct evidence passes can describe the same dated shift.
-      if(!accounted.has(key))accounted.set(key,0);
-    }
-    const seenDated=new Set();
-    for(const item of [...dated,...(cards?.rows||[]).filter(r=>r.date&&r.startTime&&r.endTime)]){
-      const dateKey=[item.date,item.startTime,item.endTime].join("|");
-      if(seenDated.has(dateKey))continue;
-      seenDated.add(dateKey);
-      const key=item.startTime+"|"+item.endTime;
-      accounted.set(key,(accounted.get(key)||0)+1);
+    // Count each observed time at most once per OCR method, and each
+    // dated shift at most once by its exact date/time. This prevents a
+    // fallback pass from manufacturing extra undated proposals.
+    const usableCards=(cards?.rows||[]).filter(row=>row.startTime&&row.endTime&&!row._omitFromReview);
+    const signatures=rows=>{
+      const map=new Map();
+      for(const row of rows){
+        const key=row.startTime+"|"+row.endTime;
+        if(!map.has(key))map.set(key,[]);
+        map.get(key).push(row);
+      }
+      return map;
+    };
+    const cardTimes=signatures(usableCards);
+    const allDated=[...dated,...usableCards.filter(row=>row.date)];
+    const knownKeys=new Set();
+    const knownCounts=new Map();
+    for(const row of allDated){
+      const unique=[row.domain,row.date,row.startTime,row.endTime].join("|");
+      if(knownKeys.has(unique))continue;
+      knownKeys.add(unique);
+      const key=row.startTime+"|"+row.endTime;
+      knownCounts.set(key,(knownCounts.get(key)||0)+1);
     }
     let missing=0;
-    for(const item of visible){
-      const key=item.startTime+"|"+item.endTime,count=accounted.get(key)||0;
-      if(count>0){accounted.set(key,count-1);continue;}
-      undated.push(item);missing++;
+    const timeKeys=new Set([...bestTimes.keys(),...cardTimes.keys()]);
+    for(const key of timeKeys){
+      const observed=Math.max(bestTimes.get(key)?.length||0,cardTimes.get(key)?.length||0);
+      const needed=Math.max(0,observed-(knownCounts.get(key)||0));
+      if(!needed)continue;
+      const options=[
+        ...(cardTimes.get(key)||[]).filter(row=>!row.date),
+        ...(bestTimes.get(key)||[])
+      ];
+      for(const row of options.slice(0,needed)){undated.push(row);missing++;}
     }
     diagnostics.push({
       image:i+1,primaryTimes:primaryTimes.length,firstDated:initial.length,
