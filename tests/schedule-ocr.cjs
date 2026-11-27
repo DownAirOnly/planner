@@ -91,4 +91,29 @@ const rollover=parser.verifyNeighboringMonth([
 ],2026,11);
 assert.equal(rollover.rejected.length,0);
 assert(rollover.accepted.every(row=>row.dateConfidence==="high"));
+// The screenshot says December even when Command was last showing November.
+const head=ocr.parseHeader("December 2026\nDecember 06 – 12",2026,11);
+assert.equal(head.month,12);
+assert.equal(head.weekStart,"2026-12-06");
+assert.equal(ocr.observedDay("Tue\n3",2026,12,head.weekStart)?.date,"2026-12-08");
+assert.equal(ocr.observedDay("Fri\n1",2026,12,head.weekStart)?.date,"2026-12-11");
+assert.equal(ocr.observedDay("Mon 7",2026,12,head.weekStart)?.date,"2026-12-07");
+// When the week heading is clipped, two other dated shifts can establish
+// that the same Friday card belongs to December 11, not January 1.
+const card=(index,day,date,startTime,endTime,confidence="high")=>({
+ _ocrCardIndex:index,_ocrWeekday:day,_ocrDayRead:null,
+ date,domain:"work",startTime,endTime,dateConfidence:confidence,
+ estimatedDate:!date,_include:!!date
+});
+const weekCards=[
+ card(1,"mon","2026-12-07","13:15","20:30"),
+ card(2,"tue","2026-12-08","12:45","20:00"),
+ card(3,"fri","2027-01-01","16:15","02:00","medium"),
+ card(4,"sat","2026-12-12","15:45","02:00"),
+ card(5,"fri","2027-01-01","16:15","02:00","medium")
+];
+const repaired=parser.stabilizeCardWeeks([weekCards]);
+assert.equal(repaired.length,1);
+assert.equal(weekCards[2].date,"2026-12-11");
+assert.equal(weekCards[4].date,"2027-01-01"); // unbracketed later section
 console.log("Schedule OCR: selected gray card, cross-month dates, overlap and duplicate safeguards passed.");

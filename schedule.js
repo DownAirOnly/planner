@@ -506,14 +506,14 @@ function eventForm(item={}){
   try{
    status.textContent="Loading text reader…";await loadTesseract();
    worker=await window.Tesseract.createWorker("eng");
-   const texts=[],detected=[],undated=[],diagnostics=[],cardCaptures=[];
+   const texts=[],detected=[],undated=[],diagnostics=[],cardCaptures=[],sourceContexts=[],observedTimes=[];
    const [yr,mo]=(document.querySelector("#schedule-month")?.value||ui.selected.slice(0,7)).split("-").map(Number);
    const domain=document.querySelector("#import-domain")?.value||"work";
    const parser=window.CommandImportParser;
-   const extract=result=>{
+   const extract=(result,sourceYear=yr,sourceMonth=mo)=>{
     const text=result?.data?.text||"";
-    return [...parser.parseText(text,domain,yr,mo),
-      ...parser.parseTsv(result?.data?.tsv||"",text,domain,yr,mo)];
+    return [...parser.parseText(text,domain,sourceYear,sourceMonth),
+      ...parser.parseTsv(result?.data?.tsv||"",text,domain,sourceYear,sourceMonth)];
    };
    const reconcile=rows=>parser.reconcileRows(rows,domain,usualWorkdays());
    for(let i=0;i<files.length;i++){
@@ -525,8 +525,11 @@ function eventForm(item={}){
       cards=await window.CommandScheduleCardOCR?.read(files[i],worker,yr,mo,domain,
         message=>{if(status)status.textContent="Image "+(i+1)+": "+message;});
     }catch(error){console.warn("Card-layout reader unavailable; trying generic OCR",error);}
+    let fileYear=cards?.header?.year||yr,fileMonth=cards?.header?.month||mo;
+    sourceContexts.push(cards?.header||{year:yr,month:mo,fromHeader:false,weekStart:""});
     if(cards?.recognized){
       cardCaptures.push(cards.rows);
+      for(const row of cards.rows)row._ocrImageIndex=i;
       let dates=0,missing=0;
       for(const item of cards.rows){
         if(item._omitFromReview){missing++;continue;}
@@ -537,7 +540,8 @@ function eventForm(item={}){
         dated:dates,dateNeeded:missing,reviewOnly:cards.rows.filter(r=>r._include===false).length});
       // Finding colored rectangles is not the same as successfully reading
       // shifts. Only skip the generic reader when every card is complete.
-      if(cards.rows.length&&cards.rows.every(r=>r.date&&r.startTime&&r.endTime&&r.dateConfidence==="high"))
+      if(cards.header?.fromHeader&&cards.rows.length&&
+         cards.rows.every(r=>r.date&&r.startTime&&r.endTime&&r.dateConfidence==="high"))
         continue;
       status.textContent="Checking unreadable shift times and dates on image "+(i+1)+"…";
     }
@@ -547,6 +551,26 @@ function eventForm(item={}){
     const primary=await worker.recognize(files[i],{}, {text:true,tsv:true});
     const original=primary.data?.text||"";
     texts.push(original);
+    if(!cards?.header?.fromHeader){
+      // A full screenshot OCR pass can still recover the clearly printed
+      // month when the small header crop didn't. Use its MONTH only: a week
+      // heading farther down may belong to a different visible section.
+      const read=window.CommandScheduleCardOCR?.parseHeader(original,yr,mo);
+      if(read?.fromHeader){
+        fileYear=read.year;fileMonth=read.month;
+        sourceContexts[sourceContexts.length-1]={...read,weekStart:""};
+        for(const row of cards?.rows||[]){
+          if(!row._ocrWeekday)continue;
+          const label=row._ocrWeekday+"\n"+(row._ocrDayRead||"");
+          const observed=window.CommandScheduleCardOCR.observedDay(label,fileYear,fileMonth);
+          row.date=observed?.date||"";
+          row.dateConfidence=observed?.confidence||"low";
+          row.estimatedDate=!row.date;
+          row._include=!!row.date&&row.dateConfidence==="high"&&!!row.startTime&&!!row.endTime;
+          row.confidenceReason=observed?.reason||"Month recognized; verify shift day";
+        }
+      }
+    }
     const primaryTimes=parser.timeOnlyRows(original,domain);
     // The strongest OCR pass determines the expected time count for each
     // time range. Never sum passes; they describe the SAME image.
@@ -561,7 +585,7 @@ function eventForm(item={}){
       for(const [key,list] of perPass)if(list.length>(bestTimes.get(key)?.length||0))bestTimes.set(key,list);
     };
     collectTimes(primary);
-    const candidates=extract(primary);
+    const candidates=extract(primary,fileYear,fileMonth);
     const initial=reconcile(candidates);
     let dated=initial,enhancedRun=false,topRun=false;
     // A screenshot can have several genuine shifts even if the first pass
@@ -570,7 +594,7 @@ function eventForm(item={}){
       status.textContent="Checking calendar dates on screenshot "+(i+1)+"…";
       const enhanced=await enhancedScreenshot(files[i],worker);
       if(enhanced){
-        enhancedRun=true;candidates.push(...extract(enhanced));
+        enhancedRun=true;candidates.push(...extract(enhanced,fileYear,fileMonth));
         collectTimes(enhanced);
         texts.push(enhanced.data?.text||"");
         dated=reconcile(candidates);
@@ -581,7 +605,7 @@ function eventForm(item={}){
       // Check the top of EVERY image, not just the first one.
       const top=await inspectTopOfScreenshot(files[i],worker);
       if(top){
-        topRun=true;candidates.push(...extract(top));
+        topRun=true;candidates.push(...extract(top,fileYear,fileMonth));
         collectTimes(top);texts.push(top.data?.text||"");
         dated=reconcile(candidates);
         visible=[...bestTimes.values()].flat();
@@ -613,9 +637,11 @@ function eventForm(item={}){
       knownCounts.set(key,(knownCounts.get(key)||0)+1);
     }
     let missing=0;
+    const perImageTimes=new Map();
     const timeKeys=new Set([...bestTimes.keys(),...cardTimes.keys()]);
     for(const key of timeKeys){
       const observed=Math.max(bestTimes.get(key)?.length||0,cardTimes.get(key)?.length||0);
+      perImageTimes.set(key,observed);
       const needed=Math.max(0,observed-(knownCounts.get(key)||0));
       if(!needed)continue;
       const options=[
@@ -624,6 +650,7 @@ function eventForm(item={}){
       ];
       for(const row of options.slice(0,needed)){undated.push(row);missing++;}
     }
+    observedTimes.push(perImageTimes);
     const cardDiagnostic=diagnostics.find(x=>x.image===i+1&&x.method==="cards");
     if(cardDiagnostic){
       cardDiagnostic.fallback=true;
@@ -642,20 +669,51 @@ function eventForm(item={}){
    draft.domain=domain;
    draft.raw=texts.filter(Boolean).join("\n");
    raw.value=draft.raw;
-   const checked=parser.verifyNeighboringMonth(detected,yr,mo);
+   const correctedWeekRows=parser.stabilizeCardWeeks(cardCaptures);
+   for(const row of correctedWeekRows)if(!detected.includes(row))detected.push(row);
+   const selected=sourceContexts.find(h=>h.fromHeader)||{year:yr,month:mo};
+   const checked=parser.verifyNeighboringMonth(detected,selected.year,selected.month);
    draft.ocrRows=reconcile(checked.accepted);
    const cardRows=new Set(cardCaptures.flat());
    const allowedUnknowns=parser.reduceOverlappingCardUnknowns(cardCaptures);
    // No blank time-less proposals: they cannot be saved and don't help the
    // user. Keep only recognized time ranges that actually need date review.
-   const unresolved=[...undated,...checked.rejected].filter(row=>
+   let unresolved=[...undated,...checked.rejected].filter(row=>
       row.startTime&&row.endTime&&(!cardRows.has(row)||allowedUnknowns.has(row)));
+   // Both screenshots can contain the same time-only fallback. Only collapse
+   // these when they have an independently confirmed overlapping shift.
+   const overlap=cardCaptures.some((a,i)=>cardCaptures.some((b,j)=>j>i&&
+      a.some(x=>x.date&&b.some(y=>y.date===x.date&&y.startTime===x.startTime&&y.endTime===x.endTime))));
+   if(overlap){
+     const maxObserved=new Map();
+     for(const counts of observedTimes)for(const [key,n] of counts)
+       maxObserved.set(key,Math.max(maxObserved.get(key)||0,n));
+     const knownByTime=new Map();
+     for(const row of draft.ocrRows){
+       const key=row.startTime+"|"+row.endTime;
+       knownByTime.set(key,(knownByTime.get(key)||0)+1);
+     }
+     const remaining=new Map();
+     unresolved=unresolved.filter(row=>{
+       const key=row.startTime+"|"+row.endTime;
+       if(!remaining.has(key))
+         remaining.set(key,Math.max(0,(maxObserved.get(key)||0)-(knownByTime.get(key)||0)));
+       if(remaining.get(key)<=0)return false;
+       remaining.set(key,remaining.get(key)-1);
+       return true;
+     });
+   }
    draft.rows=[...draft.ocrRows,...unresolved];
    const unreadableCards=diagnostics.filter(d=>d.method==="cards")
      .reduce((sum,d)=>sum+(d.unreadable||0),0);
    draft.openReviewId=undefined;
    const report=["Command v40 schedule OCR diagnostics",
-     "Selected month: "+yr+"-"+String(mo).padStart(2,"0"),
+     "Month picker fallback: "+yr+"-"+String(mo).padStart(2,"0"),
+     "Image calendar headers: "+sourceContexts.map((h,i)=>
+       (i+1)+":"+(h.fromHeader?"visible ":"fallback ")+
+       h.year+"-"+String(h.month).padStart(2,"0")+
+       (h.weekStart?" week "+h.weekStart:"")).join("; "),
+     "Weekday/date corrections: "+correctedWeekRows.length,
      "Images: "+files.length,
      ...diagnostics.map(x=>x.method==="cards"?
        "Image "+x.image+": "+x.cards+" shift cards, "+x.dated+

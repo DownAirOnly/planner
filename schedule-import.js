@@ -477,5 +477,64 @@ function verifyNeighboringMonth(rows,year,month){
  }).filter(Boolean);
  return {accepted,rejected};
 }
-window.CommandImportParser={parseText:parseTextV38,parseTsv:parseTsvV38,timeOnlyRows,countRanges,context,timeRange,proposeClippedPrevious,reconcileRows,verifyNeighboringMonth,reduceOverlappingCardUnknowns};
+// Work-schedule screenshots may omit the week heading in a scrolled view.
+// Reconcile its card weekdays only when two distinct dated cards in that
+// SAME screenshot corroborate the same Sunday-to-Saturday week. A visible
+// heading (attached to the card read) is even stronger evidence.
+function stabilizeCardWeeks(captures){
+ const weekdayIndex={sun:0,mon:1,tue:2,wed:3,thu:4,fri:5,sat:6};
+ const weekOf=value=>{
+  if(!/^\d{4}-\d\d-\d\d$/.test(value||""))return "";
+  const d=new Date(value+"T12:00:00");
+  if(Number.isNaN(d.getTime()))return "";
+  d.setDate(d.getDate()-d.getDay());
+  return dateIso(d.getFullYear(),d.getMonth()+1,d.getDate());
+ };
+ const corrected=[];
+ for(const capture of captures||[]){
+  const rows=Array.isArray(capture)?capture:capture.rows||[];
+  const declared=(Array.isArray(capture)?rows[0]?._ocrWeekStart:capture.weekStart)||"";
+  const byWeek=new Map();
+  for(const row of rows){
+   if(!row?.date||row.dateConfidence!=="high"||!row.startTime||!row.endTime)continue;
+   const week=weekOf(row.date);
+   if(!week)continue;
+   if(!byWeek.has(week))byWeek.set(week,new Set());
+   byWeek.get(week).add(row.date);
+  }
+  const ordered=[...byWeek].sort((a,b)=>b[1].size-a[1].size);
+  const inferred=!declared&&ordered[0]?.[1].size>=2&&
+    (!ordered[1]||ordered[0][1].size>ordered[1][1].size)?ordered[0][0]:"";
+  const anchor=declared||inferred;
+  if(!anchor)continue;
+  // When the week heading is cropped away, only repair a card bracketed
+  // by dated cards from that same week. A later-week card below a new
+  // heading must not inherit an earlier week's date.
+  const positions=rows.filter(r=>inferred&&weekOf(r.date)===inferred&&
+    r.dateConfidence==="high"&&Number.isInteger(r._ocrCardIndex))
+    .map(r=>r._ocrCardIndex);
+  const earliest=positions.length?Math.min(...positions):null;
+  const latest=positions.length?Math.max(...positions):null;
+  for(const row of rows){
+   if(!declared&&earliest!=null&&Number.isInteger(row._ocrCardIndex)&&
+       (row._ocrCardIndex<earliest||row._ocrCardIndex>latest))continue;
+   const ordinal=weekdayIndex[String(row?._ocrWeekday||"").toLowerCase().slice(0,3)];
+   if(ordinal==null||!row.startTime||!row.endTime)continue;
+   const d=new Date(anchor+"T12:00:00");
+   if(d.getDay()!==0)continue;
+   d.setDate(d.getDate()+ordinal);
+   const expected=dateIso(d.getFullYear(),d.getMonth()+1,d.getDate());
+   if(!expected||row.date===expected)continue;
+   // The weekday is taken from this card's own gutter, not from a
+   // recurring-workday assumption or the previous calendar entry.
+   row.date=expected;row.dateConfidence="high";row.estimatedDate=false;
+   row._include=true;row._ocrWeekStart=anchor;
+   row.confidenceReason=declared?"Week heading and printed weekday resolve OCR date":
+     "Weekday corroborated by two dated shifts in this screenshot";
+   corrected.push(row);
+  }
+ }
+ return corrected;
+}
+window.CommandImportParser={parseText:parseTextV38,parseTsv:parseTsvV38,timeOnlyRows,countRanges,context,timeRange,proposeClippedPrevious,reconcileRows,verifyNeighboringMonth,stabilizeCardWeeks,reduceOverlappingCardUnknowns};
 })();
