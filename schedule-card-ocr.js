@@ -192,6 +192,10 @@ async function read(file,worker,year,month,domain,onProgress=()=>{},givenHeader=
   year=header.year;month=header.month;
   const blocks=findCards(ctx.getImageData(0,0,canvas.width,canvas.height),canvas.width,canvas.height);
   if(!blocks.length)return {recognized:false,header};
+  // If a card is already visible above the week header's normal position,
+  // the header may belong to the NEXT section of a scrolled calendar.
+  // Do not apply that week's dates backwards to a clipped earlier shift.
+  if(header.weekStart&&blocks[0].top<canvas.height*.31)header.weekStart="";
   // Only choose this specialized method when there are distinct blue cards
   // typical of the source schedule's UI. Never infer shifts from text alone.
   const rows=[],stats={cards:blocks.length,dates:0,unconfirmed:0,missingTimes:0,clipped:0};
