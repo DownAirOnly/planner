@@ -525,7 +525,7 @@ function eventForm(item={}){
       cards=await window.CommandScheduleCardOCR?.read(files[i],worker,yr,mo,domain,
         message=>{if(status)status.textContent="Image "+(i+1)+": "+message;});
     }catch(error){console.warn("Card-layout reader unavailable; trying generic OCR",error);}
-    const fileYear=cards?.header?.year||yr,fileMonth=cards?.header?.month||mo;
+    let fileYear=cards?.header?.year||yr,fileMonth=cards?.header?.month||mo;
     sourceContexts.push(cards?.header||{year:yr,month:mo,fromHeader:false,weekStart:""});
     if(cards?.recognized){
       cardCaptures.push(cards.rows);
@@ -540,7 +540,8 @@ function eventForm(item={}){
         dated:dates,dateNeeded:missing,reviewOnly:cards.rows.filter(r=>r._include===false).length});
       // Finding colored rectangles is not the same as successfully reading
       // shifts. Only skip the generic reader when every card is complete.
-      if(cards.rows.length&&cards.rows.every(r=>r.date&&r.startTime&&r.endTime&&r.dateConfidence==="high"))
+      if(cards.header?.fromHeader&&cards.rows.length&&
+         cards.rows.every(r=>r.date&&r.startTime&&r.endTime&&r.dateConfidence==="high"))
         continue;
       status.textContent="Checking unreadable shift times and dates on image "+(i+1)+"…";
     }
@@ -550,6 +551,26 @@ function eventForm(item={}){
     const primary=await worker.recognize(files[i],{}, {text:true,tsv:true});
     const original=primary.data?.text||"";
     texts.push(original);
+    if(!cards?.header?.fromHeader){
+      // A full screenshot OCR pass can still recover the clearly printed
+      // month when the small header crop didn't. Use its MONTH only: a week
+      // heading farther down may belong to a different visible section.
+      const read=window.CommandScheduleCardOCR?.parseHeader(original,yr,mo);
+      if(read?.fromHeader){
+        fileYear=read.year;fileMonth=read.month;
+        sourceContexts[sourceContexts.length-1]={...read,weekStart:""};
+        for(const row of cards?.rows||[]){
+          if(!row._ocrWeekday)continue;
+          const label=row._ocrWeekday+"\n"+(row._ocrDayRead||"");
+          const observed=window.CommandScheduleCardOCR.observedDay(label,fileYear,fileMonth);
+          row.date=observed?.date||"";
+          row.dateConfidence=observed?.confidence||"low";
+          row.estimatedDate=!row.date;
+          row._include=!!row.date&&row.dateConfidence==="high"&&!!row.startTime&&!!row.endTime;
+          row.confidenceReason=observed?.reason||"Month recognized; verify shift day";
+        }
+      }
+    }
     const primaryTimes=parser.timeOnlyRows(original,domain);
     // The strongest OCR pass determines the expected time count for each
     // time range. Never sum passes; they describe the SAME image.
