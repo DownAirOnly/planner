@@ -15,7 +15,8 @@ const labels=[
 ];
 for(const [label,want] of labels)
  assert.equal(ocr.observedDay(label,2025,3)?.date,want);
-assert.equal(ocr.observedDay("Thu\n4",2025,3),null);
+assert.equal(ocr.observedDay("Thu\n4",2025,3)?.date,"");
+assert.equal(ocr.observedDay("Thu\n4",2025,3)?.confidence,"low");
 assert.equal(ocr.observedDay("Sat\n1",2021,12)?.date,"2022-01-01");
 const raw=`March 2025
 March 30 - April 05
