@@ -66,4 +66,29 @@ const c=[row("2025-03-31","08:00|16:00","c1"),
  row("","14:00|22:00","c2"),row("","14:00|22:00","c3")];
 const kept=parser.reduceOverlappingCardUnknowns([a,c]);
 assert.equal([...kept].filter(r=>r.startTime==="14:00").length,2);
+// A misread "Fri 11" -> "Fri 1" must not become January 1 merely
+// because both days are Fridays. Keep its time as an unconfirmed candidate.
+const complete=(date,startTime,endTime,dateConfidence="high",reason="")=>({
+ domain:"work",date,startTime,endTime,dateConfidence,
+ confidenceReason:reason,estimatedDate:false,_include:true
+});
+const questionable=[
+ complete("2026-12-06","13:15","20:30"),
+ complete("2026-12-12","15:45","02:00"),
+ complete("2027-01-01","16:15","02:00","medium","Weekday and day visibly match the neighboring month")
+];
+const screened=parser.verifyNeighboringMonth(questionable,2026,12);
+assert.equal(screened.accepted.length,2);
+assert.equal(screened.rejected.length,1);
+assert.equal(screened.rejected[0].date,"");
+assert.equal(screened.rejected[0].startTime,"16:15");
+assert.equal(ocr.observedDay("Fri\n1",2026,12)?.confidence,"medium");
+// Legitimate Nov–Dec weeks must still remain eligible without retyping.
+const rollover=parser.verifyNeighboringMonth([
+ complete("2026-11-29","13:30","20:30"),
+ complete("2026-11-30","13:30","20:30"),
+ complete("2026-12-04","15:45","02:00","medium","Weekday and day visibly match the neighboring month")
+],2026,11);
+assert.equal(rollover.rejected.length,0);
+assert(rollover.accepted.every(row=>row.dateConfidence==="high"));
 console.log("Schedule OCR: selected gray card, cross-month dates, overlap and duplicate safeguards passed.");
