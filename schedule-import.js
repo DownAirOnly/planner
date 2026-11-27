@@ -507,7 +507,17 @@ function stabilizeCardWeeks(captures){
     (!ordered[1]||ordered[0][1].size>ordered[1][1].size)?ordered[0][0]:"";
   const anchor=declared||inferred;
   if(!anchor)continue;
+  // When the week heading is cropped away, only repair a card bracketed
+  // by dated cards from that same week. A later-week card below a new
+  // heading must not inherit an earlier week's date.
+  const positions=rows.filter(r=>inferred&&weekOf(r.date)===inferred&&
+    r.dateConfidence==="high"&&Number.isInteger(r._ocrCardIndex))
+    .map(r=>r._ocrCardIndex);
+  const earliest=positions.length?Math.min(...positions):null;
+  const latest=positions.length?Math.max(...positions):null;
   for(const row of rows){
+   if(!declared&&earliest!=null&&Number.isInteger(row._ocrCardIndex)&&
+       (row._ocrCardIndex<earliest||row._ocrCardIndex>latest))continue;
    const ordinal=weekdayIndex[String(row?._ocrWeekday||"").toLowerCase().slice(0,3)];
    if(ordinal==null||!row.startTime||!row.endTime)continue;
    const d=new Date(anchor+"T12:00:00");
