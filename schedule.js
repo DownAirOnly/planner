@@ -624,6 +624,13 @@ function eventForm(item={}){
       ];
       for(const row of options.slice(0,needed)){undated.push(row);missing++;}
     }
+    const cardDiagnostic=diagnostics.find(x=>x.image===i+1&&x.method==="cards");
+    if(cardDiagnostic){
+      cardDiagnostic.fallback=true;
+      cardDiagnostic.dated=knownKeys.size;
+      cardDiagnostic.dateNeeded=missing;
+      cardDiagnostic.unreadable=Math.max(0,cardDiagnostic.cards-knownKeys.size-missing);
+    }
     diagnostics.push({
       image:i+1,primaryTimes:primaryTimes.length,firstDated:initial.length,
       enhanced:enhancedRun,top:topRun,visibleTimes:visible.length,
@@ -644,6 +651,8 @@ function eventForm(item={}){
    const unresolved=[...undated,...checked.rejected].filter(row=>
       row.startTime&&row.endTime&&(!cardRows.has(row)||allowedUnknowns.has(row)));
    draft.rows=[...draft.ocrRows,...unresolved];
+   const unreadableCards=diagnostics.filter(d=>d.method==="cards")
+     .reduce((sum,d)=>sum+(d.unreadable||0),0);
    draft.openReviewId=undefined;
    const report=["Command v40 schedule OCR diagnostics",
      "Selected month: "+yr+"-"+String(mo).padStart(2,"0"),
@@ -667,6 +676,7 @@ function eventForm(item={}){
    sortedDraft(draft.rows);importPreview();
    status.textContent=draft.ocrRows.length+" dated shift"+(draft.ocrRows.length===1?"":"s")+" found"+
      (unresolved.length?"; "+unresolved.length+" shift"+(unresolved.length===1?"":"s")+" need review.":".")+
+     (unreadableCards?" "+unreadableCards+" card"+(unreadableCards===1?"":"s")+" still could not be read and were not added as blank shifts.":"")+
      " Review against the screenshots before saving.";
   }catch(error){status.textContent=error.message||"Could not read the screenshot. Try Live Text from Photos.";}
   finally{
