@@ -132,9 +132,9 @@ function emptyRow(domain,parsed,dateInfo){
   date:"",startTime:"",endTime:"",allDay:false,park:domain==="work"?"IOA":"",
   location:"",assignment:"",zoneColor:"",notes:"",breakMinutes:null,
   repeat:"none",weekdays:[],until:""};
- return {...row,date:dateInfo?.date||"",dateConfidence:dateInfo?.confidence||"low",
+ return {...row,date:dateInfo?.date||"",_ocrWeekday:dateInfo?.weekday||"",_ocrDayRead:dateInfo?.dayRead||null,dateConfidence:dateInfo?.confidence||"low",
    confidenceReason:dateInfo?.reason||"Date missing from screenshot — set it before saving",
-   estimatedDate:!dateInfo,reviewed:false,_include:dateInfo?.confidence==="high"&&!!row.startTime&&!!row.endTime};
+   estimatedDate:!dateInfo?.date,reviewed:false,_include:dateInfo?.confidence==="high"&&!!dateInfo?.date&&!!row.startTime&&!!row.endTime};
 }
 function cardRow(cardText,dateInfo,domain,year,month){
  const parser=window.CommandImportParser;
@@ -166,7 +166,19 @@ async function focusedTimeText(canvas,card,worker){
   try{await worker.setParameters?.({tessedit_pageseg_mode:"6"});}catch{}
  }
 }
-async function read(file,worker,year,month,domain,onProgress=()=>{}){
+async function readHeader(canvas,worker,year,month){
+ try{
+  const w=canvas.width,h=canvas.height;
+  const top=Math.round(h*.218),bottom=Math.round(h*.327);
+  const headerCanvas=crop(canvas,Math.round(w*.035),top,Math.round(w*.72),bottom-top,1.7,true);
+  try{await worker.setParameters?.({tessedit_pageseg_mode:"6"});}catch{}
+  const result=await worker.recognize(headerCanvas,{}, {text:true});
+  return parseHeader(result?.data?.text||"",year,month);
+ }catch{
+  return {year,month,fromHeader:false,weekStart:""};
+ }
+}
+async function read(file,worker,year,month,domain,onProgress=()=>{},givenHeader=null){
  if(typeof createImageBitmap!=="function"||typeof document==="undefined")return {recognized:false};
  let bitmap;
  try{
@@ -176,8 +188,10 @@ async function read(file,worker,year,month,domain,onProgress=()=>{}){
   const ctx=canvas.getContext("2d",{willReadFrequently:true});
   if(!ctx)return {recognized:false};
   ctx.drawImage(bitmap,0,0);
+  const header=givenHeader||await readHeader(canvas,worker,year,month);
+  year=header.year;month=header.month;
   const blocks=findCards(ctx.getImageData(0,0,canvas.width,canvas.height),canvas.width,canvas.height);
-  if(!blocks.length)return {recognized:false};
+  if(!blocks.length)return {recognized:false,header};
   // Only choose this specialized method when there are distinct blue cards
   // typical of the source schedule's UI. Never infer shifts from text alone.
   const rows=[],stats={cards:blocks.length,dates:0,unconfirmed:0,missingTimes:0,clipped:0};
@@ -207,13 +221,13 @@ async function read(file,worker,year,month,domain,onProgress=()=>{}){
    const gutterCanvas=crop(canvas,Math.round(w*.075),gutterTop,Math.round(w*.105),
      gutterBottom-gutterTop,3,true);
    const gutter=await worker.recognize(gutterCanvas,{}, {text:true});
-   const dateInfo=observedDay(gutter?.data?.text||"",year,month);
+   const dateInfo=observedDay(gutter?.data?.text||"",year,month,header.weekStart);
    const row=cardRow(shiftText,dateInfo,domain,year,month);
    // A partial card clipped by scrolling is not an additional shift.
    // Keep full-size cards with missing time for explicit review.
    if(!row.startTime&&!row.endTime&&typicalHeight>0&&
       card.bottom-card.top<typicalHeight*.55){stats.clipped++;continue;}
-   row._ocrCardIndex=i+1;
+   row._ocrCardIndex=i+1;row._ocrWeekStart=header.weekStart||"";
    rows.push(row);
    if(dateInfo)stats.dates++;
    if(!row._include)stats.unconfirmed++;
@@ -224,8 +238,8 @@ async function read(file,worker,year,month,domain,onProgress=()=>{}){
     row._omitFromReview=true;
    }
   }
-  return {recognized:true,rows,stats};
+  return {recognized:true,rows,stats,header};
  }finally{bitmap?.close?.();}
 }
-window.CommandScheduleCardOCR={findCards,observedDay,cardRow,read};
+window.CommandScheduleCardOCR={findCards,observedDay,cardRow,parseHeader,readHeader,read};
 })();
