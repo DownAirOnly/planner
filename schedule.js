@@ -669,7 +669,8 @@ function eventForm(item={}){
    draft.domain=domain;
    draft.raw=texts.filter(Boolean).join("\n");
    raw.value=draft.raw;
-   for(const row of parser.stabilizeCardWeeks(cardCaptures))if(!detected.includes(row))detected.push(row);
+   const correctedWeekRows=parser.stabilizeCardWeeks(cardCaptures);
+   for(const row of correctedWeekRows)if(!detected.includes(row))detected.push(row);
    const selected=sourceContexts.find(h=>h.fromHeader)||{year:yr,month:mo};
    const checked=parser.verifyNeighboringMonth(detected,selected.year,selected.month);
    draft.ocrRows=reconcile(checked.accepted);
@@ -707,7 +708,12 @@ function eventForm(item={}){
      .reduce((sum,d)=>sum+(d.unreadable||0),0);
    draft.openReviewId=undefined;
    const report=["Command v40 schedule OCR diagnostics",
-     "Selected month: "+yr+"-"+String(mo).padStart(2,"0"),
+     "Month picker fallback: "+yr+"-"+String(mo).padStart(2,"0"),
+     "Image calendar headers: "+sourceContexts.map((h,i)=>
+       (i+1)+":"+(h.fromHeader?"visible ":"fallback ")+
+       h.year+"-"+String(h.month).padStart(2,"0")+
+       (h.weekStart?" week "+h.weekStart:"")).join("; "),
+     "Weekday/date corrections: "+correctedWeekRows.length,
      "Images: "+files.length,
      ...diagnostics.map(x=>x.method==="cards"?
        "Image "+x.image+": "+x.cards+" shift cards, "+x.dated+
