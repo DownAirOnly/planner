@@ -529,13 +529,21 @@ function eventForm(item={}){
       cardCaptures.push(cards.rows);
       let dates=0,missing=0;
       for(const item of cards.rows){
+        if(item._omitFromReview){missing++;continue;}
         if(item.date&&item.startTime&&item.endTime){detected.push(item);dates++;}
-        else {undated.push(item);missing++;}
+        else if(item.startTime&&item.endTime){undated.push(item);missing++;}
       }
       diagnostics.push({image:i+1,method:"cards",cards:cards.rows.length,
         dated:dates,dateNeeded:missing,reviewOnly:cards.rows.filter(r=>r._include===false).length});
-      continue;
+      // Finding colored rectangles is not the same as successfully reading
+      // shifts. Only skip the generic reader when every card is complete.
+      if(cards.rows.length&&cards.rows.every(r=>r.date&&r.startTime&&r.endTime&&r.dateConfidence==="high"))
+        continue;
+      status.textContent="Checking unreadable shift times and dates on image "+(i+1)+"…";
     }
+    // Card scanning uses a single-text-line mode for focused reads. Restore
+    // automatic page segmentation before the full-screenshot fallback.
+    try{await worker.setParameters?.({tessedit_pageseg_mode:"3"});}catch{}
     const primary=await worker.recognize(files[i],{}, {text:true,tsv:true});
     const original=primary.data?.text||"";
     texts.push(original);
@@ -581,7 +589,16 @@ function eventForm(item={}){
     }
     detected.push(...dated);
     const accounted=new Map();
-    for(const item of dated){
+    for(const item of [...dated,...(cards?.rows||[]).filter(r=>r.date&&r.startTime&&r.endTime)]){
+      const key=item.startTime+"|"+item.endTime;
+      // Distinct evidence passes can describe the same dated shift.
+      if(!accounted.has(key))accounted.set(key,0);
+    }
+    const seenDated=new Set();
+    for(const item of [...dated,...(cards?.rows||[]).filter(r=>r.date&&r.startTime&&r.endTime)]){
+      const dateKey=[item.date,item.startTime,item.endTime].join("|");
+      if(seenDated.has(dateKey))continue;
+      seenDated.add(dateKey);
       const key=item.startTime+"|"+item.endTime;
       accounted.set(key,(accounted.get(key)||0)+1);
     }
@@ -602,10 +619,14 @@ function eventForm(item={}){
    draft.domain=domain;
    draft.raw=texts.filter(Boolean).join("\n");
    raw.value=draft.raw;
-   draft.ocrRows=reconcile(detected);
+   const checked=parser.verifyNeighboringMonth(detected,yr,mo);
+   draft.ocrRows=reconcile(checked.accepted);
    const cardRows=new Set(cardCaptures.flat());
    const allowedUnknowns=parser.reduceOverlappingCardUnknowns(cardCaptures);
-   const unresolved=undated.filter(row=>!cardRows.has(row)||allowedUnknowns.has(row));
+   // No blank time-less proposals: they cannot be saved and don't help the
+   // user. Keep only recognized time ranges that actually need date review.
+   const unresolved=[...undated,...checked.rejected].filter(row=>
+      row.startTime&&row.endTime&&(!cardRows.has(row)||allowedUnknowns.has(row)));
    draft.rows=[...draft.ocrRows,...unresolved];
    draft.openReviewId=undefined;
    const report=["Command v40 schedule OCR diagnostics",
