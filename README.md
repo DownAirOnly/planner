@@ -1,5 +1,16 @@
 # Command
 
+## v42.4 — Schedule import resilience
+
+- Card detection is no longer treated as successful OCR by itself. If any visible card lacks a verified date or readable time, Command performs a full-screenshot fallback.
+- When multiline card OCR misses the printed hours, a focused, enhanced single-line read tries to recover the time without manual entry.
+- A weekday match in the neighboring month is provisional until corroborated by confirmed shifts from the same calendar week. This prevents an OCR-truncated Friday 11 from being accepted as Friday, January 1.
+- Incomplete cards that contain no start/end time are counted in diagnostics rather than generating blank shift proposals.
+- Fallback and card passes count distinct dated shifts once, avoiding redundant time-only rows when the same shift is recognized twice.
+- Existing conflict review, schedule backups, and duplicate protection remain in place. No saved shifts are changed automatically.
+- Added synthetic regression coverage for misleading adjacent-month dates and genuine cross-month weeks.
+
+
 ## v42.3 — UKG work-schedule screenshot import
 
 - Recognizes both pale-blue shift cards and the darker gray selected-day card, so a selected shift is no longer omitted just because the card has a different background.
