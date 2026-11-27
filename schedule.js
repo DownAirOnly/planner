@@ -529,13 +529,21 @@ function eventForm(item={}){
       cardCaptures.push(cards.rows);
       let dates=0,missing=0;
       for(const item of cards.rows){
+        if(item._omitFromReview){missing++;continue;}
         if(item.date&&item.startTime&&item.endTime){detected.push(item);dates++;}
-        else {undated.push(item);missing++;}
+        else if(item.startTime&&item.endTime){missing++;}
       }
       diagnostics.push({image:i+1,method:"cards",cards:cards.rows.length,
         dated:dates,dateNeeded:missing,reviewOnly:cards.rows.filter(r=>r._include===false).length});
-      continue;
+      // Finding colored rectangles is not the same as successfully reading
+      // shifts. Only skip the generic reader when every card is complete.
+      if(cards.rows.length&&cards.rows.every(r=>r.date&&r.startTime&&r.endTime&&r.dateConfidence==="high"))
+        continue;
+      status.textContent="Checking unreadable shift times and dates on image "+(i+1)+"…";
     }
+    // Card scanning uses a single-text-line mode for focused reads. Restore
+    // automatic page segmentation before the full-screenshot fallback.
+    try{await worker.setParameters?.({tessedit_pageseg_mode:"3"});}catch{}
     const primary=await worker.recognize(files[i],{}, {text:true,tsv:true});
     const original=primary.data?.text||"";
     texts.push(original);
@@ -580,16 +588,48 @@ function eventForm(item={}){
       }
     }
     detected.push(...dated);
-    const accounted=new Map();
-    for(const item of dated){
-      const key=item.startTime+"|"+item.endTime;
-      accounted.set(key,(accounted.get(key)||0)+1);
+    // Count each observed time at most once per OCR method, and each
+    // dated shift at most once by its exact date/time. This prevents a
+    // fallback pass from manufacturing extra undated proposals.
+    const usableCards=(cards?.rows||[]).filter(row=>row.startTime&&row.endTime&&!row._omitFromReview);
+    const signatures=rows=>{
+      const map=new Map();
+      for(const row of rows){
+        const key=row.startTime+"|"+row.endTime;
+        if(!map.has(key))map.set(key,[]);
+        map.get(key).push(row);
+      }
+      return map;
+    };
+    const cardTimes=signatures(usableCards);
+    const allDated=[...dated,...usableCards.filter(row=>row.date)];
+    const knownKeys=new Set();
+    const knownCounts=new Map();
+    for(const row of allDated){
+      const unique=[row.domain,row.date,row.startTime,row.endTime].join("|");
+      if(knownKeys.has(unique))continue;
+      knownKeys.add(unique);
+      const key=row.startTime+"|"+row.endTime;
+      knownCounts.set(key,(knownCounts.get(key)||0)+1);
     }
     let missing=0;
-    for(const item of visible){
-      const key=item.startTime+"|"+item.endTime,count=accounted.get(key)||0;
-      if(count>0){accounted.set(key,count-1);continue;}
-      undated.push(item);missing++;
+    const timeKeys=new Set([...bestTimes.keys(),...cardTimes.keys()]);
+    for(const key of timeKeys){
+      const observed=Math.max(bestTimes.get(key)?.length||0,cardTimes.get(key)?.length||0);
+      const needed=Math.max(0,observed-(knownCounts.get(key)||0));
+      if(!needed)continue;
+      const options=[
+        ...(cardTimes.get(key)||[]).filter(row=>!row.date),
+        ...(bestTimes.get(key)||[])
+      ];
+      for(const row of options.slice(0,needed)){undated.push(row);missing++;}
+    }
+    const cardDiagnostic=diagnostics.find(x=>x.image===i+1&&x.method==="cards");
+    if(cardDiagnostic){
+      cardDiagnostic.fallback=true;
+      cardDiagnostic.dated=knownKeys.size;
+      cardDiagnostic.dateNeeded=missing;
+      cardDiagnostic.unreadable=Math.max(0,cardDiagnostic.cards-knownKeys.size-missing);
     }
     diagnostics.push({
       image:i+1,primaryTimes:primaryTimes.length,firstDated:initial.length,
@@ -602,11 +642,17 @@ function eventForm(item={}){
    draft.domain=domain;
    draft.raw=texts.filter(Boolean).join("\n");
    raw.value=draft.raw;
-   draft.ocrRows=reconcile(detected);
+   const checked=parser.verifyNeighboringMonth(detected,yr,mo);
+   draft.ocrRows=reconcile(checked.accepted);
    const cardRows=new Set(cardCaptures.flat());
    const allowedUnknowns=parser.reduceOverlappingCardUnknowns(cardCaptures);
-   const unresolved=undated.filter(row=>!cardRows.has(row)||allowedUnknowns.has(row));
+   // No blank time-less proposals: they cannot be saved and don't help the
+   // user. Keep only recognized time ranges that actually need date review.
+   const unresolved=[...undated,...checked.rejected].filter(row=>
+      row.startTime&&row.endTime&&(!cardRows.has(row)||allowedUnknowns.has(row)));
    draft.rows=[...draft.ocrRows,...unresolved];
+   const unreadableCards=diagnostics.filter(d=>d.method==="cards")
+     .reduce((sum,d)=>sum+(d.unreadable||0),0);
    draft.openReviewId=undefined;
    const report=["Command v40 schedule OCR diagnostics",
      "Selected month: "+yr+"-"+String(mo).padStart(2,"0"),
@@ -630,6 +676,7 @@ function eventForm(item={}){
    sortedDraft(draft.rows);importPreview();
    status.textContent=draft.ocrRows.length+" dated shift"+(draft.ocrRows.length===1?"":"s")+" found"+
      (unresolved.length?"; "+unresolved.length+" shift"+(unresolved.length===1?"":"s")+" need review.":".")+
+     (unreadableCards?" "+unreadableCards+" card"+(unreadableCards===1?"":"s")+" still could not be read and were not added as blank shifts.":"")+
      " Review against the screenshots before saving.";
   }catch(error){status.textContent=error.message||"Could not read the screenshot. Try Live Text from Photos.";}
   finally{

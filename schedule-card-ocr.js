@@ -45,7 +45,7 @@ function observedDay(text,year,month){
    if(!/^(?:[1-9]|[12]\d|3[01])$/.test(value))continue;
    const matched=dateFromObservedWeekday(year,month,Number(value),wd);
    if(!matched)continue;
-   found.push({date:matched.date,confidence:guessed?"medium":"high",
+   found.push({date:matched.date,confidence:(guessed||matched.adjacentMonth)?"medium":"high",
      reason:guessed?"Date glyph may be 7 (read as /); confirm in screenshot":
        matched.adjacentMonth?"Weekday and day visibly match the neighboring month":
        "Weekday and date visibly printed"});
@@ -115,6 +115,24 @@ function cardRow(cardText,dateInfo,domain,year,month){
  }
  return emptyRow(domain,parsed,dateInfo);
 }
+// When a large multi-line card loses its first line, reread the time line
+// independently. The user should not have to supply a shift time that is
+// clearly printed on the screenshot.
+async function focusedTimeText(canvas,card,worker){
+ const width=canvas.width,height=canvas.height;
+ const x=Math.round(width*.26),right=Math.round(width*.89);
+ const top=Math.max(0,card.top-Math.round(width*.008));
+ const bottom=Math.min(height,card.top+Math.round(width*.112));
+ if(bottom<=top)return "";
+ const strip=crop(canvas,x,top,right-x,bottom-top,2,true);
+ try{
+  try{await worker.setParameters?.({tessedit_pageseg_mode:"7"});}catch{}
+  const result=await worker.recognize(strip,{}, {text:true});
+  return result?.data?.text||"";
+ }finally{
+  try{await worker.setParameters?.({tessedit_pageseg_mode:"6"});}catch{}
+ }
+}
 async function read(file,worker,year,month,domain,onProgress=()=>{}){
  if(typeof createImageBitmap!=="function"||typeof document==="undefined")return {recognized:false};
  let bitmap;
@@ -142,6 +160,13 @@ async function read(file,worker,year,month,domain,onProgress=()=>{}){
    const cardCanvas=crop(canvas,left,cardStart,right-left,cardEnd-cardStart);
    const cardResult=await worker.recognize(cardCanvas,{}, {text:true});
    const description=cardResult?.data?.text||"";
+   let shiftText=description;
+   // The focused read is only needed if the usual multiline OCR loses
+   // the time range. Keep the full card for position and area extraction.
+   if(!window.CommandImportParser.timeRange(shiftText)){
+    const focused=await focusedTimeText(canvas,card,worker);
+    if(window.CommandImportParser.timeRange(focused))shiftText=focused+"\n"+description;
+   }
    // Date labels align with the top of their own card. Excluding the
    // previous card's label prevents attaching a shift to the wrong day.
    const gutterTop=Math.max(Math.round(h*.18),card.top-Math.round(w*.09));
@@ -150,7 +175,7 @@ async function read(file,worker,year,month,domain,onProgress=()=>{}){
      gutterBottom-gutterTop,3,true);
    const gutter=await worker.recognize(gutterCanvas,{}, {text:true});
    const dateInfo=observedDay(gutter?.data?.text||"",year,month);
-   const row=cardRow(description,dateInfo,domain,year,month);
+   const row=cardRow(shiftText,dateInfo,domain,year,month);
    // A partial card clipped by scrolling is not an additional shift.
    // Keep full-size cards with missing time for explicit review.
    if(!row.startTime&&!row.endTime&&typicalHeight>0&&
@@ -159,7 +184,12 @@ async function read(file,worker,year,month,domain,onProgress=()=>{}){
    rows.push(row);
    if(dateInfo)stats.dates++;
    if(!row._include)stats.unconfirmed++;
-   if(!row.startTime||!row.endTime)stats.missingTimes++;
+   if(!row.startTime||!row.endTime){
+    stats.missingTimes++;
+    // A date without a time cannot be saved as a shift. Keep this evidence
+    // for diagnostics but do not display a blank editable proposal.
+    row._omitFromReview=true;
+   }
   }
   return {recognized:true,rows,stats};
  }finally{bitmap?.close?.();}

@@ -434,5 +434,48 @@ function reduceOverlappingCardUnknowns(captures){
  return kept;
 }
 
-window.CommandImportParser={parseText:parseTextV38,parseTsv:parseTsvV38,timeOnlyRows,countRanges,context,timeRange,proposeClippedPrevious,reconcileRows,reduceOverlappingCardUnknowns};
+// Check neighboring-month OCR dates against complete, confirmed shifts.
+// A truncated "Fri 11" can be read as "Fri 1" and otherwise become a
+// plausible January 1. A valid weekday alone does not establish the week.
+function verifyNeighboringMonth(rows,year,month){
+ const prefix=year+"-"+pad(month)+"-";
+ const sunday=date=>{
+  const d=new Date(date+"T12:00:00");
+  d.setDate(d.getDate()-d.getDay());
+  return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+ };
+ const confirmed=(rows||[]).filter(r=>r.date?.startsWith(prefix)&&
+   r.dateConfidence==="high"&&r.startTime&&r.endTime);
+ const weeks=new Set(confirmed.map(r=>sunday(r.date)));
+ // If a complete week is independently corroborated by two distinct
+ // adjacent-month dates, preserve it even if the selected month has no
+ // matching shift.
+ const external=new Map();
+ for(const row of rows||[]){
+  if(!row.date||row.date.startsWith(prefix)||!row.startTime||!row.endTime)continue;
+  const week=sunday(row.date);
+  if(!external.has(week))external.set(week,new Set());
+  external.get(week).add(row.date);
+ }
+ const rejected=[];
+ const accepted=(rows||[]).map(row=>{
+  if(!row.date||row.date.startsWith(prefix))return row;
+  const week=sunday(row.date);
+  if(weeks.has(week)||(external.get(week)?.size||0)>=2){
+   // The printed neighboring-month day now belongs to a confirmed week.
+   if(row.dateConfidence==="medium"&&/neighboring month/i.test(row.confidenceReason||""))
+    return {...row,dateConfidence:"high",confidenceReason:"Date corroborated by this schedule week",
+      estimatedDate:false,_include:!!row.startTime&&!!row.endTime};
+   return row;
+  }
+  // A single adjacent-month guess must never be silently saved.
+  // Keep any recognized times available for explicit review.
+  const review={...row,date:"",dateConfidence:"low",estimatedDate:true,_include:false,
+    confidenceReason:"Date outside confirmed schedule week; check screenshot"};
+  rejected.push(review);
+  return null;
+ }).filter(Boolean);
+ return {accepted,rejected};
+}
+window.CommandImportParser={parseText:parseTextV38,parseTsv:parseTsvV38,timeOnlyRows,countRanges,context,timeRange,proposeClippedPrevious,reconcileRows,verifyNeighboringMonth,reduceOverlappingCardUnknowns};
 })();
