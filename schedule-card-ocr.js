@@ -45,7 +45,7 @@ function observedDay(text,year,month){
    if(!/^(?:[1-9]|[12]\d|3[01])$/.test(value))continue;
    const matched=dateFromObservedWeekday(year,month,Number(value),wd);
    if(!matched)continue;
-   found.push({date:matched.date,confidence:guessed?"medium":"high",
+   found.push({date:matched.date,confidence:(guessed||matched.adjacentMonth)?"medium":"high",
      reason:guessed?"Date glyph may be 7 (read as /); confirm in screenshot":
        matched.adjacentMonth?"Weekday and day visibly match the neighboring month":
        "Weekday and date visibly printed"});
