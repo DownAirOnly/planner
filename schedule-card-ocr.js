@@ -30,10 +30,10 @@ function observedDay(text,year,month,weekStart=""){
  const lines=String(text||"").split(/\r?\n/).map(clean).filter(Boolean);
  const found=[];
  for(let i=0;i<lines.length;i++){
-  const match=/^(Sun(?:day)?|Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?)\.?$/i.exec(lines[i]);
+  const match=/^(Sun(?:day)?|Mon(?:day)?|Tue(?:sday)?|Wed(?:nesday)?|Thu(?:rsday)?|Fri(?:day)?|Sat(?:urday)?)\.?(?:\s*([1-9]|[12]\d|3[01]))?$/i.exec(lines[i]);
   if(!match)continue;
   const weekday=match[1].slice(0,3).toLowerCase();
-  let day=0,guessed=false;
+  let day=Number(match[2]||0),guessed=false;
   for(let j=i+1;j<Math.min(lines.length,i+4);j++){
    if(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)/i.test(lines[j]))break;
    const token=lines[j].replace(/\s/g,"").replace(/[.,]$/,"");
